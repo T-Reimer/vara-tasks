@@ -14,6 +14,7 @@ COPY --from=build /out/vara-server /app/vara-server
 EXPOSE 8080
 ENV PORT=8080
 ENV DATA_DIR=/app/data
+ENV STATIC_DIR=/app/dist
 VOLUME ["/app/data"]
 
 ENTRYPOINT ["/app/vara-server"]

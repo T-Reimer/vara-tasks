@@ -5,12 +5,14 @@ import "os"
 type Config struct {
 	Port    string
 	DataDir string
+	StaticDir string
 }
 
 func Load() Config {
 	return Config{
-		Port:    getOrDefault("PORT", "8080"),
-		DataDir: getOrDefault("DATA_DIR", "./data"),
+		Port:      getOrDefault("PORT", "8080"),
+		DataDir:   getOrDefault("DATA_DIR", "./data"),
+		StaticDir: getOrDefault("STATIC_DIR", "../dist"),
 	}
 }
 
