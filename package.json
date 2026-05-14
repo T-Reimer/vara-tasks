@@ -1,0 +1,27 @@
+{
+  "name": "capacitor-solid-template",
+  "version": "0.0.0",
+  "description": "",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@capacitor/cli": "^8.3.4",
+    "@types/bootstrap": "^5.2.10",
+    "sass": "^1.99.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.13",
+    "vite-plugin-solid": "^2.11.12"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.3.4",
+    "@capacitor/core": "^8.3.4",
+    "@capacitor/ios": "^8.3.4",
+    "@popperjs/core": "^2.11.8",
+    "bootstrap": "^5.3.8",
+    "solid-js": "^1.9.12"
+  }
+}
