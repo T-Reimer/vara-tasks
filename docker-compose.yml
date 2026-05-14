@@ -1,0 +1,13 @@
+services:
+  server:
+    build:
+      context: ./server
+    container_name: vara-server
+    environment:
+      PORT: "8080"
+      DATA_DIR: /app/data
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./server/data:/app/data
+    restart: unless-stopped

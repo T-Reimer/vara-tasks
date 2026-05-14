@@ -9,8 +9,10 @@ Vara Tasks is a cross-platform (Web + Android) project and task management appli
 - All users are trusted admins (no permissions/quotas)
 - Client-generated UUIDs for easy syncing
 - Go backend with disk-based file storage
+- Go server runs in a Docker container (`/server`)
 - JWT authentication with QR code sharing
 - Modified-time based conflict resolution
+- Android supports fully local projects (no server required)
 
 ---
 
@@ -22,6 +24,7 @@ Vara Tasks is a cross-platform (Web + Android) project and task management appli
 - **Trusted Users**: All users considered admins; no permission enforcement
 - **Hierarchical Organization**: Projects → Tasks → Nested Tasks
 - **Unlimited Nesting**: No enforced depth limit for nested tasks
+- **Project Modes**: Each project can be Local-only or Server-backed
 - **Attachment Centralization**: Project-level attachment hub shared across tasks
 - **Rich Formatting**: EditorJS-based formatted text for descriptions
 - **Flexible Labeling**: Global and project-specific custom label types
@@ -31,6 +34,7 @@ Vara Tasks is a cross-platform (Web + Android) project and task management appli
 ## 1. Data Storage Structure
 
 All data is stored as JSON files on disk in a hierarchical structure. Clients generate UUIDs locally to ensure consistency across offline changes.
+For Android Local-only projects, this structure exists only on device storage and does not require a backend data directory.
 
 ### 1.1 Directory Structure
 
@@ -68,6 +72,8 @@ client-data/
 ```json
 {
   "id": "proj-550e8400-e29b-41d4-a716-446655440000",
+  "connectionMode": "server",
+  "serverId": "srv-home-lan",
   "title": "Q2 Planning",
   "description": {
     "blocks": [
@@ -80,6 +86,15 @@ client-data/
   "createdAt": "2026-05-14T10:00:00Z",
   "dueBy": "2026-06-30T23:59:59Z",
   "updatedAt": "2026-05-14T10:00:00Z"
+}
+```
+
+For Local-only projects, use:
+
+```json
+{
+  "connectionMode": "local",
+  "serverId": null
 }
 ```
 
@@ -211,6 +226,7 @@ client-data/
 | Project-Specific Labels                 | Organization   | P1       | ✓   | ✓       | Custom per-project               |
 | Label Type Support (text/date/dropdown) | Organization   | P1       | ✓   | ✓       | Flexible metadata                |
 | Offline-First Sync                      | Infrastructure | P0       | ✓   | ✓       | Core requirement                 |
+| Project Connection Mode Selection       | Infrastructure | P0       | ✓   | ✓       | Choose Local-only or configured server |
 | Modified-Time Conflict Resolution       | Infrastructure | P1       | ✓   | ✓       | Use file mtime                   |
 | Local-First Storage                     | Infrastructure | P0       | ✓   | ✓       | IndexedDB (web), SQLite (mobile) |
 | Search & Filter                         | UX             | P2       | ✓   | ✓       | In-project search only           |
@@ -245,6 +261,8 @@ client-data/
 #### Backend
 
 - **Runtime**: Go (lightweight, minimal dependencies)
+- **Location**: `/server`
+- **Deployment**: Docker container
 - **Storage**: Disk-based JSON files
 - **Authentication**: JWT with QR code/code sharing
 - **Sync**: File modification time (mtime) based
@@ -278,7 +296,8 @@ client-data/
               └───────┬────────┘
                       │
          ┌────────────▼─────────────────┐
-         │   Go Backend (Port 8080)     │
+         │   Go Backend Container        │
+         │   (/server, Port 8080)        │
          │  - Transaction API           │
          │  - File storage ops          │
          │  - JWT validation            │
@@ -319,7 +338,9 @@ Record in sync queue (filename, operation type)
     ↓
 Debounce sync trigger for 5 seconds
   ↓
-Device comes online
+If project is Local-only: stop here (no remote sync)
+  ↓
+If project is Server-backed: device comes online
     ↓
 Batch sync queue (group by 50)
     ↓
@@ -359,16 +380,35 @@ Service worker responsibilities on web:
 - Trigger sync checks when connectivity returns
 - Avoid caching mutable project JSON as source-of-truth (IndexedDB remains primary local state)
 
+### 3.5 Project Connection Modes
+
+At project creation, user selects one mode:
+
+- Local-only project: stored and used fully on device; no server calls required
+- Server-backed project: linked to one configured server endpoint and participates in sync
+
+Server configuration model:
+
+- App maintains a list of configured servers (`name`, `baseUrl`, optional `auth` metadata)
+- New projects can target any configured server or Local-only mode
+- Project metadata stores `connectionMode` and, when server-backed, `serverId`
+- Sync engine and API client resolve behavior from project connection mode
+
 ---
 
 ## 4. Backend Transaction API
 
 The backend exposes a simple transaction-based API. No complex REST semantics required.
 
+Note: These endpoints are used only for Server-backed projects. Local-only projects do not call backend APIs.
+All server API calls require JWT authentication via `Authorization: Bearer <token>`.
+Bootstrap exception: `/api/auth/login` exchanges a short-lived code for the first JWT.
+
 ### 4.1 Core Endpoints
 
 ```
 POST /api/transactions
+  Headers: Authorization: Bearer <token>
   Request: {
     operations: [
       {
@@ -392,6 +432,7 @@ POST /api/transactions
   }
 
 GET /api/sync?since={timestamp}&paths=[...]
+  Headers: Authorization: Bearer <token>
   Get files modified since timestamp
   Response: {
     files: [
@@ -405,14 +446,17 @@ GET /api/sync?since={timestamp}&paths=[...]
   }
 
 GET /api/files/{path}
+  Headers: Authorization: Bearer <token>
   Download file content
   Response: file binary data
 
 POST /api/auth/login
+  Headers: none (bootstrap using one-time code)
   Request: { code: "ABC123" }
   Response: { token: "jwt-token", expiresIn: 3600 }
 
 GET /api/auth/qrcode
+  Headers: Authorization: Bearer <token>
   Generate QR code for new device login
   Response: { code: "ABC123", expiresAt: "2026-05-14T10:05:00Z" }
   Note: Client renders QR from returned code; server does not persist QR images
@@ -460,7 +504,8 @@ func processTransaction(tx Transaction) {
 
 ```
 1. Server admin generates auth codes:
-   $ ./vara-backend gen-codes --count 5
+  $ cd /server
+  $ go run ./cmd/gen-codes --count 5
    
    Output:
    CODE: ABC123DEF456
@@ -732,10 +777,12 @@ When coming online:
 ## 11. Backend Folder Structure
 
 ```
-vara-backend/ (Go project)
+/server (Go project)
 ├── main.go
 ├── go.mod
 ├── go.sum
+├── Dockerfile
+├── .dockerignore
 ├── config/
 │   └── config.go
 ├── api/

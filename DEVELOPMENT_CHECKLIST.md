@@ -28,12 +28,15 @@
 - [ ] Implement Task document structure (with nesting support)
 - [ ] Create sync queue collection for offline changes
 - [ ] Implement offline change tracking (operation type, path, content)
+- [ ] Add project connection metadata (`connectionMode`, `serverId`)
 
 ### UI Components
 
 - [ ] Project list view
 - [ ] Project detail view
 - [ ] Create/Edit project form
+- [ ] Add project mode selector (Local-only or Server-backed)
+- [ ] Add configured server picker for Server-backed projects
 - [ ] Task list view (with hierarchy visualization)
 - [ ] Create/Edit task form
 - [ ] EditorJS integration for descriptions
@@ -47,14 +50,17 @@
 - [ ] Date management (created, dueBy)
 - [ ] Permanent delete implementation (hard delete)
 - [ ] Implement hybrid web loading (startup metadata sync + on-demand project load)
+- [ ] Skip remote sync for Local-only projects
 
 ## Phase 2: Backend Setup (Go)
 
 ### Backend Project Initialization
 
-- [ ] Initialize Go module (go.mod)
+- [ ] Create `/server` and initialize Go module (go.mod)
 - [ ] Set up project structure (api/, storage/, auth/, middleware/)
 - [ ] Create main.go with HTTP server
+- [ ] Add Dockerfile and .dockerignore for Go server container
+- [ ] Add docker-compose.yml service for `/server`
 - [ ] Set up logging (log package or minimal logger)
 - [ ] Create error handling middleware
 - [ ] Set up CORS middleware for web/mobile
@@ -84,6 +90,8 @@
 ### Authentication System
 
 - [ ] Implement JWT generation (auth/jwt.go)
+- [ ] Apply JWT middleware to all server API routes
+- [ ] Keep `/api/auth/login` as one-time bootstrap endpoint to mint JWT
 - [ ] Create code generation utility (cmd/gen-codes/)
 - [ ] Store auth codes with 5-minute expiration
 - [ ] Implement code validation endpoint
@@ -102,12 +110,14 @@
 - [ ] Add 5-second sync debounce
 - [ ] Add exponential backoff retry logic (5 retries, starting at 5 seconds)
 - [ ] Trigger sync from service worker when web connectivity is restored
+- [ ] Route sync by project mode (Local-only: no-op, Server-backed: API sync)
 
 ### HTTP Client
 
 - [ ] Create API wrapper service with transaction support
+- [ ] Resolve API base URL from selected project server configuration
 - [ ] Implement request/response interceptors
-- [ ] Add JWT token to Authorization header
+- [ ] Add JWT token to Authorization header for all server requests
 - [ ] Add error boundary for failed syncs
 - [ ] Implement mtime tracking in response handling
 
@@ -201,6 +211,8 @@
 - [ ] SQLite storage via capacitor-sqlite
 - [ ] Network status monitoring (Capacitor Network API)
 - [ ] Background sync with device sleep handling
+- [ ] Android server configuration management (add/edit/remove/test server)
+- [ ] Android local-only project flow (full use without server reachability)
 
 ### Testing on Device
 
@@ -276,9 +288,11 @@ vara-tasks/
 │   ├── models/              # Type definitions
 │   ├── utils/               # Utility functions
 │   └── App.tsx
-├── vara-backend/            # Backend (Go)
+├── server/                  # Backend (Go, Dockerized)
 │   ├── main.go
 │   ├── go.mod
+│   ├── Dockerfile
+│   ├── .dockerignore
 │   ├── api/
 │   │   ├── transactions.go
 │   │   ├── auth.go
@@ -316,18 +330,12 @@ vara-tasks/
 }
 ```
 
-### Backend (Node.js)
+### Backend (Go)
 
 ```json
 {
-  "express": "^4.18",
-  "pg": "^8.8",
-  "knex": "^3.1",
-  "typescript": "^4.9",
-  "dotenv": "^16.0",
-  "uuid": "^9.0",
-  "zod": "^3.20",
-  "winston": "^3.8"
+  "github.com/gorilla/mux": "v1.8.1",
+  "github.com/golang-jwt/jwt/v5": "v5.2.1"
 }
 ```
 
@@ -342,14 +350,17 @@ npm run build            # Build web app for production
 npm run cap build android  # Build Android APK
 npm run cap run android    # Run on Android emulator
 
-# Backend (Go)
-cd vara-backend
+# Backend (Go, Docker)
+cd server
 go run main.go           # Start server on port 8080
 go build                 # Compile binary
 go run ./cmd/gen-codes   # Generate auth codes
 
+# Backend (Docker)
+docker compose up --build
+
 # Testing
-cd vara-backend
+cd server
 go test ./...            # Run all tests
 go test -v ./api         # Verbose test output
 ```
@@ -358,7 +369,7 @@ go test -v ./api         # Verbose test output
 
 ```bash
 # Frontend .env.local
-VITE_API_URL=http://localhost:8080
+VITE_DEFAULT_SERVER_URL=http://localhost:8080  # optional fallback/default
 VITE_ENV=development
 
 # Backend (.env or hardcoded in Go)
