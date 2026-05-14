@@ -4,7 +4,7 @@ const App: Component = () => {
   return (
     <div class="container py-5">
       <h1>Vara Tasks</h1>
-      <p class="lead text-muted">Your tasks, organized simply.</p>
+      <p class="lead text-muted">Your tasks, organized simply. Edit</p>
     </div>
   );
 };

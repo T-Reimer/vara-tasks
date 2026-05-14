@@ -1,4 +1,4 @@
-package com.example.app;
+package com.solociti.varatasks;
 
 import com.getcapacitor.BridgeActivity;
 

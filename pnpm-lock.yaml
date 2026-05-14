@@ -14,9 +14,6 @@ importers:
       '@capacitor/core':
         specifier: ^8.3.4
         version: 8.3.4
-      '@capacitor/ios':
-        specifier: ^8.3.4
-        version: 8.3.4(@capacitor/core@8.3.4)
       '@popperjs/core':
         specifier: ^2.11.8
         version: 2.11.8
@@ -141,11 +138,6 @@ packages:
 
   '@capacitor/core@8.3.4':
     resolution: {integrity: sha512-CqRQCkb6HXxcx/N7s+hHTN6ef2CmamFiRMITwm4qB840ph56mS42bzUgn6tKCP+RZjdDweiRHj9ytDDeN6jFag==}
-
-  '@capacitor/ios@8.3.4':
-    resolution: {integrity: sha512-XvvnPFWWP/gwwO811ue7nEBKSZqDCIB8hxGgWV6iXA7DSVLqMOEmQdfHj94kkVxof2wL9XWHypu3ayDULo7U5w==}
-    peerDependencies:
-      '@capacitor/core': ^8.3.0
 
   '@emnapi/core@1.10.0':
     resolution: {integrity: sha512-yq6OkJ4p82CAfPl0u9mQebQHKPJkY7WrIuk205cTYnYe+k2Z8YBh11FrbRG/H6ihirqcacOgl2BIO8oyMQLeXw==}
@@ -1206,10 +1198,6 @@ snapshots:
   '@capacitor/core@8.3.4':
     dependencies:
       tslib: 2.8.1
-
-  '@capacitor/ios@8.3.4(@capacitor/core@8.3.4)':
-    dependencies:
-      '@capacitor/core': 8.3.4
 
   '@emnapi/core@1.10.0':
     dependencies:

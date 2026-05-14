@@ -5,7 +5,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "serve": "vite preview"
+    "postbuild": "npx cap sync",
+    "serve": "vite preview",
+    "cap": "npx cap",
+    "cap:sync": "npx cap sync",
+    "cap:android": "npx cap open android"
   },
   "license": "MIT",
   "devDependencies": {
@@ -19,7 +23,6 @@
   "dependencies": {
     "@capacitor/android": "^8.3.4",
     "@capacitor/core": "^8.3.4",
-    "@capacitor/ios": "^8.3.4",
     "@popperjs/core": "^2.11.8",
     "bootstrap": "^5.3.8",
     "solid-js": "^1.9.12"

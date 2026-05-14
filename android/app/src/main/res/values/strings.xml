@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">capacitor-solid-template</string>
-    <string name="title_activity_main">capacitor-solid-template</string>
-    <string name="package_name">com.example.app</string>
-    <string name="custom_url_scheme">com.example.app</string>
+    <string name="app_name">Vara Tasks</string>
+    <string name="title_activity_main">Vara Tasks</string>
+    <string name="package_name">com.solociti.varatasks</string>
+    <string name="custom_url_scheme">com.solociti.varatasks</string>
 </resources>
