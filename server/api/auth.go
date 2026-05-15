@@ -155,7 +155,7 @@ func resolveServerURL(r *http.Request, configured string) string {
 	host := r.Host
 	if trustProxyHeaders {
 		forwardedHost := firstForwardedHeaderValue(r.Header.Get("X-Forwarded-Host"))
-		if forwardedHostPattern.MatchString(forwardedHost) {
+		if isValidForwardedHost(forwardedHost) {
 			host = forwardedHost
 		}
 	}
@@ -168,9 +168,6 @@ func firstForwardedHeaderValue(value string) string {
 		return ""
 	}
 	first := strings.Split(value, ",")[0]
-	if first == "" {
-		return ""
-	}
 	trimmed := strings.TrimSpace(first)
 	if trimmed == "" {
 		return ""
@@ -180,6 +177,13 @@ func firstForwardedHeaderValue(value string) string {
 		return ""
 	}
 	return trimmed
+}
+
+func isValidForwardedHost(value string) bool {
+	if !forwardedHostPattern.MatchString(value) {
+		return false
+	}
+	return !strings.Contains(value, "..")
 }
 
 func upsertDevice(dataDir, username string, device deviceEntry) error {

@@ -105,13 +105,11 @@ export async function ingestFile(
     try {
       if (!metadataSaved) {
         removeBlob(projectId, meta.id);
-        const cleaned = listAttachments(projectId).filter((a) => a.id !== meta.id);
-        saveJSON(metaKey(projectId), cleaned);
       }
       const index = loadJSON<AttachmentIndex>(indexKey(projectId), {});
       if (index[meta.id]) {
         if (metadataSaved) {
-          index[meta.id] = (index[meta.id] ?? []).filter((id) => id !== taskId);
+          index[meta.id] = index[meta.id].filter((id) => id !== taskId);
           if (index[meta.id].length === 0) {
             delete index[meta.id];
           }

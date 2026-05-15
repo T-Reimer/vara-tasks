@@ -165,6 +165,7 @@ async function pushPending(options?: { allowServerPush?: boolean }): Promise<voi
           // Update local mtime
           applyServerMtime(item, result.mtime);
         } else if (result.conflict) {
+          // Conflict requires manual reconciliation in the current UI model.
           markEntitySyncStatus(item, "error");
           successful.push(item.id);
         } else {
