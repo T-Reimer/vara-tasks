@@ -18,7 +18,7 @@ interface Props {
 const LabelAssigner: Component<Props> = (props) => {
   const allLabels = () => listAllLabels(props.projectId);
   const assignments = () =>
-    getAssignmentsForTarget(props.projectId, props.targetId);
+    getAssignmentsForTarget(props.projectId, props.targetId, props.targetType);
 
   const [open, setOpen] = createSignal(false);
   const [selectedLabelId, setSelectedLabelId] = createSignal(
@@ -43,7 +43,12 @@ const LabelAssigner: Component<Props> = (props) => {
   };
 
   const remove = (assignment: LabelAssignment) => {
-    removeLabelValue(props.projectId, assignment.labelId, props.targetId);
+    removeLabelValue(
+      props.projectId,
+      assignment.labelId,
+      props.targetId,
+      props.targetType,
+    );
     props.onChanged?.();
   };
 

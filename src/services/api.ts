@@ -5,6 +5,7 @@ import type {
   SyncFileEntry,
   SyncOperation,
 } from "../models/types";
+import { getClientId } from "./client-id";
 
 interface TransactionResult {
   path: string;
@@ -41,7 +42,7 @@ export async function loginToServer(params: {
     },
     body: JSON.stringify({
       code: params.code,
-      clientId: crypto.randomUUID(),
+      clientId: getClientId(),
       deviceName: params.deviceName,
     }),
   });
@@ -139,8 +140,12 @@ export async function getFile(params: {
   server: ServerProfile;
   path: string;
 }): Promise<unknown> {
+  const encodedPath = params.path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
   const response = await fetch(
-    `${params.server.baseUrl}/api/files/${encodeURIComponent(params.path)}`,
+    `${params.server.baseUrl}/api/files/${encodedPath}`,
     {
       headers: { Authorization: `Bearer ${params.server.authToken}` },
     },
@@ -152,4 +157,3 @@ export async function getFile(params: {
 
   return response.json();
 }
-

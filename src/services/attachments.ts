@@ -1,6 +1,8 @@
 import type { AttachmentIndex, AttachmentMeta } from "../models/types";
 import { loadJSON, saveJSON } from "./storage";
 
+const MAX_ATTACHMENT_BYTES = 4 * 1024 * 1024;
+
 function metaKey(projectId: string): string {
   return `vara.attachments.${projectId}`;
 }
@@ -69,8 +71,8 @@ export async function ingestFile(
   file: File,
   taskId?: string,
 ): Promise<AttachmentMeta> {
-  if (file.size > 100 * 1024 * 1024) {
-    throw new Error("File exceeds 100MB limit");
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    throw new Error("File exceeds 4MB limit");
   }
 
   const base64 = await fileToBase64(file);
@@ -86,13 +88,30 @@ export async function ingestFile(
     syncStatus: "pending",
   };
 
-  const metas = listAttachments(projectId);
-  metas.push(meta);
-  saveJSON(metaKey(projectId), metas);
   storeBlob(projectId, meta.id, base64);
 
-  if (taskId) {
-    linkAttachmentToTask(projectId, meta.id, taskId);
+  try {
+    const metas = listAttachments(projectId);
+    metas.push(meta);
+    saveJSON(metaKey(projectId), metas);
+
+    if (taskId) {
+      linkAttachmentToTask(projectId, meta.id, taskId);
+    }
+  } catch (error) {
+    try {
+      removeBlob(projectId, meta.id);
+      const cleaned = listAttachments(projectId).filter((a) => a.id !== meta.id);
+      saveJSON(metaKey(projectId), cleaned);
+      const index = loadJSON<AttachmentIndex>(indexKey(projectId), {});
+      if (index[meta.id]) {
+        delete index[meta.id];
+        saveJSON(indexKey(projectId), index);
+      }
+    } catch {
+      // Best effort cleanup only.
+    }
+    throw error;
   }
 
   return meta;

@@ -281,7 +281,7 @@ const ProjectPage: Component = () => {
             <For each={filteredTasks()}>
               {(task) => {
                 const assignments = () =>
-                  getAssignmentsForTarget(projectId(), task.id);
+                  getAssignmentsForTarget(projectId(), task.id, "task");
                 const childCount = () =>
                   listChildTasks(projectId(), task.id).length;
 

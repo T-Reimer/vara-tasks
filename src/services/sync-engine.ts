@@ -1,25 +1,18 @@
 import type { SyncQueueItem } from "../models/types";
 import { getSyncChanges, postTransactions } from "./api";
+import { getClientId } from "./client-id";
 import { getProject, updateProject } from "./projects";
 import { listServerProfiles } from "./server-config";
 import { dequeueMany, failedCount, incrementRetry, nextBatch, pendingCount } from "./sync-queue";
 import { updateTask } from "./tasks";
 
 const LAST_SYNC_KEY = "vara.last-sync-ts";
-const CLIENT_ID_KEY = "vara.client-id";
-
-function getClientId(): string {
-  let id = localStorage.getItem(CLIENT_ID_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(CLIENT_ID_KEY, id);
-  }
-  return id;
-}
 
 export function getLastSyncTs(): number {
   const raw = localStorage.getItem(LAST_SYNC_KEY);
-  return raw ? parseInt(raw, 10) : 0;
+  if (!raw) return 0;
+  const parsed = parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 function setLastSyncTs(ts: number): void {
@@ -45,8 +38,8 @@ export interface SyncState {
 
 let currentState: SyncState = {
   isSyncing: false,
-  pending: 0,
-  failed: 0,
+  pending: pendingCount(),
+  failed: failedCount(),
   lastError: null,
   lastSyncAt: getLastSyncTs(),
   isOnline: navigator.onLine,
@@ -93,16 +86,18 @@ export function scheduleSyncDebounced(): void {
 
 export async function runSync(): Promise<void> {
   if (isSyncing) return;
-  if (!navigator.onLine) return;
 
   isSyncing = true;
   emit({ isSyncing: true, lastError: null });
 
   try {
     await pushPending();
-    await pullRemoteChanges();
-    setLastSyncTs(Date.now());
-    emit({ lastSyncAt: Date.now() });
+    if (navigator.onLine) {
+      await pullRemoteChanges();
+      const now = Date.now();
+      setLastSyncTs(now);
+      emit({ lastSyncAt: now });
+    }
   } catch (error) {
     emit({ lastError: error instanceof Error ? error.message : "Sync error" });
   } finally {
@@ -127,12 +122,21 @@ async function pushPending(): Promise<void> {
     const project = getProject(projectId);
     if (!project || project.connectionMode !== "server") {
       // Local-only: mark all as done
-      successful.push(...items.map((i) => i.id));
+      for (const item of items) {
+        successful.push(item.id);
+        applyServerMtime(item, item.mtime);
+      }
       continue;
     }
 
     const profile = serverProfiles.find((s) => s.id === project.serverId);
-    if (!profile) continue;
+    if (!profile) {
+      for (const item of items) {
+        markEntitySyncStatus(item, "error");
+        incrementRetry(item.id, "Missing server profile configuration");
+      }
+      continue;
+    }
 
     const ops = items.map((item) => ({
       type: item.operationType,
@@ -157,9 +161,10 @@ async function pushPending(): Promise<void> {
           // Update local mtime
           applyServerMtime(item, result.mtime);
         } else if (result.conflict) {
-          // Server wins: mark done and re-fetch
-          successful.push(item.id);
+          markEntitySyncStatus(item, "error");
+          incrementRetry(item.id, "Server conflict");
         } else {
+          markEntitySyncStatus(item, "error");
           incrementRetry(item.id, result.error);
         }
       }
@@ -180,10 +185,17 @@ async function pushPending(): Promise<void> {
 // _mtime is received from the server but not stored locally — the server is the
 // authoritative source for mtimes; the client uses updatedAt for ordering.
 function applyServerMtime(item: SyncQueueItem, _mtime: number): void {
+  markEntitySyncStatus(item, "synced");
+}
+
+function markEntitySyncStatus(
+  item: SyncQueueItem,
+  syncStatus: "synced" | "error",
+): void {
   if (item.entityType === "project") {
-    updateProject(item.projectId, { syncStatus: "synced" });
+    updateProject(item.projectId, { syncStatus });
   } else if (item.entityType === "task") {
-    updateTask(item.projectId, item.entityId, { syncStatus: "synced" });
+    updateTask(item.projectId, item.entityId, { syncStatus });
   }
 }
 

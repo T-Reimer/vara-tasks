@@ -1,4 +1,4 @@
-import { createSignal, For, Show, type Component } from "solid-js";
+import { createEffect, createSignal, For, Show, type Component } from "solid-js";
 import type { AttachmentMeta } from "../models/types";
 import { ingestFile, listAttachments, listAttachmentsForTask } from "../services/attachments";
 import AttachmentCard from "./AttachmentCard";
@@ -21,8 +21,11 @@ const AttachmentHub: Component<Props> = (props) => {
     setAttachments(all);
   };
 
-  // Refresh on mount and whenever projectId changes
-  refresh();
+  createEffect(() => {
+    void props.projectId;
+    void props.taskId;
+    refresh();
+  });
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;

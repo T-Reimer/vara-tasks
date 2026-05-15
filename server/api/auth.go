@@ -138,18 +138,45 @@ func resolveServerURL(r *http.Request, configured string) string {
 	}
 
 	scheme := "http"
-	if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded == "http" || forwarded == "https" {
-		scheme = forwarded
-	} else if r.TLS != nil {
+	trustProxyHeaders := strings.EqualFold(os.Getenv("TRUST_PROXY_HEADERS"), "true")
+	if trustProxyHeaders {
+		forwardedProto := firstForwardedHeaderValue(r.Header.Get("X-Forwarded-Proto"))
+		if forwardedProto == "http" || forwardedProto == "https" {
+			scheme = forwardedProto
+		}
+	}
+	if scheme == "http" && r.TLS != nil {
 		scheme = "https"
 	}
 
 	host := r.Host
-	if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
-		host = forwardedHost
+	if trustProxyHeaders {
+		forwardedHost := firstForwardedHeaderValue(r.Header.Get("X-Forwarded-Host"))
+		if forwardedHost != "" {
+			host = forwardedHost
+		}
 	}
 
 	return scheme + "://" + host
+}
+
+func firstForwardedHeaderValue(value string) string {
+	if value == "" {
+		return ""
+	}
+	first := strings.Split(value, ",")[0]
+	if first == "" {
+		return ""
+	}
+	trimmed := strings.TrimSpace(first)
+	if trimmed == "" {
+		return ""
+	}
+	// Forwarded host/proto headers should be a single token.
+	if strings.ContainsAny(trimmed, " \t") {
+		return ""
+	}
+	return trimmed
 }
 
 func upsertDevice(dataDir, username string, device deviceEntry) error {

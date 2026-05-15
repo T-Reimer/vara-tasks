@@ -33,7 +33,7 @@ export function createProject(input: {
     dueBy: input.dueBy,
     createdAt: now,
     updatedAt: now,
-    syncStatus: "pending",
+    syncStatus: input.connectionMode === "local" ? "synced" : "pending",
   };
 
   const projects = loadJSON<ProjectRecord[]>(PROJECT_STORAGE_KEY, []);

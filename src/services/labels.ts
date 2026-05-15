@@ -140,8 +140,11 @@ export function listAssignments(projectId: string): LabelAssignment[] {
 export function getAssignmentsForTarget(
   projectId: string,
   targetId: string,
+  targetType: TargetType,
 ): LabelAssignment[] {
-  return listAssignments(projectId).filter((a) => a.targetId === targetId);
+  return listAssignments(projectId).filter(
+    (a) => a.targetId === targetId && a.targetType === targetType,
+  );
 }
 
 export function setLabelValue(
@@ -153,7 +156,10 @@ export function setLabelValue(
 ): LabelAssignment {
   const assignments = listAssignments(projectId);
   const existing = assignments.findIndex(
-    (a) => a.labelId === labelId && a.targetId === targetId,
+    (a) =>
+      a.labelId === labelId &&
+      a.targetId === targetId &&
+      a.targetType === targetType,
   );
 
   const assignment: LabelAssignment = { labelId, targetId, targetType, value };
@@ -172,10 +178,16 @@ export function removeLabelValue(
   projectId: string,
   labelId: string,
   targetId: string,
+  targetType: TargetType,
 ): boolean {
   const assignments = listAssignments(projectId);
   const next = assignments.filter(
-    (a) => !(a.labelId === labelId && a.targetId === targetId),
+    (a) =>
+      !(
+        a.labelId === labelId &&
+        a.targetId === targetId &&
+        a.targetType === targetType
+      ),
   );
   if (next.length === assignments.length) return false;
   saveJSON(assignmentsKey(projectId), next);
@@ -194,7 +206,10 @@ export function filterTasksByLabel(
     filters.every(({ labelId, value }) =>
       assignments.some(
         (a) =>
-          a.targetId === taskId && a.labelId === labelId && a.value === value,
+          a.targetId === taskId &&
+          a.targetType === "task" &&
+          a.labelId === labelId &&
+          a.value === value,
       ),
     ),
   );

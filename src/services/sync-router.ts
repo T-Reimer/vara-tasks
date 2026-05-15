@@ -14,11 +14,19 @@ export async function routeSyncOperation(params: {
     };
   }
 
-  await postTransactions({
-    project: params.project,
-    serverProfiles: params.serverProfiles,
-    operations: [params.operation],
-  });
+  try {
+    await postTransactions({
+      project: params.project,
+      serverProfiles: params.serverProfiles,
+      operations: [params.operation],
+    });
+  } catch (error) {
+    return {
+      mode: "server",
+      success: false,
+      detail: error instanceof Error ? error.message : "Sync failed",
+    };
+  }
 
   return {
     mode: "server",
