@@ -1,5 +1,6 @@
 /* @refresh reload */
 import 'bootstrap/dist/css/bootstrap.min.css';
+import '@fortawesome/fontawesome-free/css/all.min.css';
 
 import { render } from 'solid-js/web';
 

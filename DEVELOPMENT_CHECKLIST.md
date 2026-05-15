@@ -33,14 +33,20 @@
 ### UI Components
 
 - [ ] Project list view
-- [ ] Project detail view
-- [ ] Create/Edit project form
-- [ ] Add project mode selector (Local-only or Server-backed)
-- [ ] Add configured server picker for Server-backed projects
-- [ ] Task list view (with hierarchy visualization)
-- [ ] Create/Edit task form
-- [ ] EditorJS integration for descriptions
-- [ ] Basic styling with Bootstrap 5
+- [x] Project list view (sidebar + main content area with kanban/list toggle)
+- [x] Project detail view
+- [x] Create/Edit project form
+- [x] Add project mode selector (Local or Server-backed)
+- [x] Add configured server picker for Server-backed projects
+- [x] Task list view (with hierarchy visualization)
+- [x] Task kanban view (4 columns: To-Do, In Progress, Review, Done)
+- [x] Task auto-save (all fields immediately editable, debounced 800ms)
+- [x] EditorJS integration for descriptions
+- [x] Bootstrap 5 + custom SCSS + Font Awesome 6 (via CDN)
+- [x] Hamburger sidebar navigation (collapsible on mobile)
+- [x] Responsive design (sidebar overlay on mobile)
+- [x] Search as icon button in project toolbar
+- [x] URL auto-fill from `window.location.origin` when adding servers
 
 ### Core Logic
 

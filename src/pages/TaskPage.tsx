@@ -1,10 +1,11 @@
-import { createSignal, For, Show, type Component } from "solid-js";
+import { createSignal, For, onCleanup, Show, type Component } from "solid-js";
 import { A, useNavigate, useParams } from "@solidjs/router";
-import type { TaskRecord } from "../models/types";
+import type { TaskRecord, TaskStatus } from "../models/types";
 import { getProject } from "../services/projects";
 import {
   createTask,
   deleteTask,
+  effectiveStatus,
   getTask,
   listChildTasks,
   toggleTaskComplete,
@@ -15,8 +16,11 @@ import { scheduleSyncDebounced } from "../services/sync-engine";
 import LabelAssigner from "../components/LabelAssigner";
 import AttachmentHub from "../components/AttachmentHub";
 import EditorJSField from "../components/EditorJSField";
+import TaskSubtaskList from "../components/TaskSubtaskList";
 import type { EditorContent } from "../models/types";
-import OfflineIndicator from "../components/OfflineIndicator";
+import { KANBAN_COLUMNS } from "../components/KanbanBoard";
+
+const AUTO_SAVE_DELAY = 800;
 
 const TaskPage: Component = () => {
   const params = useParams();
@@ -29,17 +33,23 @@ const TaskPage: Component = () => {
     getTask(projectId(), taskId()),
   );
   const [subtasks, setSubtasks] = createSignal<TaskRecord[]>([]);
-  const [editing, setEditing] = createSignal(false);
   const [editTitle, setEditTitle] = createSignal(task()?.title ?? "");
   const [editDueBy, setEditDueBy] = createSignal(task()?.dueBy ?? "");
   const [editDescription, setEditDescription] = createSignal<
     EditorContent | undefined
   >(task()?.description);
   const [newSubtaskTitle, setNewSubtaskTitle] = createSignal("");
-  const [activeTab, setActiveTab] = createSignal<
-    "detail" | "subtasks" | "attachments"
-  >("detail");
-  const [message, setMessage] = createSignal("");
+  const [saveStatus, setSaveStatus] = createSignal<
+    "saved" | "saving" | "error" | ""
+  >("");
+
+  let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let clearSaveStatusTimer: ReturnType<typeof setTimeout> | null = null;
+
+  onCleanup(() => {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    if (clearSaveStatusTimer) clearTimeout(clearSaveStatusTimer);
+  });
 
   const refresh = () => {
     setTask(getTask(projectId(), taskId()));
@@ -48,11 +58,50 @@ const TaskPage: Component = () => {
 
   refresh();
 
-  const saveEdits = () => {
+  const triggerSave = (changes: Parameters<typeof updateTask>[2]) => {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    setSaveStatus("saving");
+    autoSaveTimer = setTimeout(() => {
+      const updated = updateTask(projectId(), taskId(), {
+        ...changes,
+        syncStatus: "pending",
+      });
+      if (updated) {
+        enqueueTaskOp({
+          operationType: "update",
+          projectId: projectId(),
+          taskId: taskId(),
+          content: updated,
+        });
+        scheduleSyncDebounced();
+        refresh();
+        setSaveStatus("saved");
+        if (clearSaveStatusTimer) clearTimeout(clearSaveStatusTimer);
+        clearSaveStatusTimer = setTimeout(() => setSaveStatus(""), 1500);
+      } else {
+        setSaveStatus("error");
+      }
+    }, AUTO_SAVE_DELAY);
+  };
+
+  const handleTitleChange = (value: string) => {
+    setEditTitle(value);
+    triggerSave({ title: value.trim() || task()?.title || "" });
+  };
+
+  const handleDueByChange = (value: string) => {
+    setEditDueBy(value);
+    triggerSave({ dueBy: value || undefined });
+  };
+
+  const handleDescriptionChange = (content: EditorContent) => {
+    setEditDescription(content);
+    triggerSave({ description: content });
+  };
+
+  const handleStatusChange = (status: TaskStatus) => {
     const updated = updateTask(projectId(), taskId(), {
-      title: editTitle().trim() || task()!.title,
-      dueBy: editDueBy() || undefined,
-      description: editDescription(),
+      status,
       syncStatus: "pending",
     });
     if (updated) {
@@ -63,9 +112,8 @@ const TaskPage: Component = () => {
         content: updated,
       });
       scheduleSyncDebounced();
+      refresh();
     }
-    setEditing(false);
-    refresh();
   };
 
   const addSubtask = (e: SubmitEvent) => {
@@ -127,10 +175,14 @@ const TaskPage: Component = () => {
 
   if (!task()) {
     return (
-      <div class="container py-4">
+      <div class="page-content">
         <div class="alert alert-danger">Task not found.</div>
-        <A href={`/projects/${projectId()}`} class="btn btn-outline-secondary">
-          ← Back
+        <A
+          href={`/projects/${projectId()}`}
+          class="btn btn-outline-secondary btn-sm"
+        >
+          <i class="fas fa-arrow-left me-1" />
+          Back
         </A>
       </div>
     );
@@ -138,195 +190,177 @@ const TaskPage: Component = () => {
 
   return (
     <div>
-      <OfflineIndicator />
-      <div class="container py-4">
-        {/* Breadcrumb */}
-        <nav aria-label="breadcrumb" class="mb-3">
-          <ol class="breadcrumb">
+      {/* Header */}
+      <div class="page-header">
+        <nav aria-label="breadcrumb" class="flex-grow-1">
+          <ol class="breadcrumb mb-0" style={{ "font-size": "0.85rem" }}>
             <li class="breadcrumb-item">
-              <A href="/">Home</A>
+              <A href="/">
+                <i class="fas fa-house" />
+              </A>
             </li>
             <li class="breadcrumb-item">
               <A href={`/projects/${projectId()}`}>
                 {project()?.title ?? "Project"}
               </A>
             </li>
-            <li class="breadcrumb-item active">{task()?.title}</li>
+            <li
+              class="breadcrumb-item active text-truncate"
+              style={{ "max-width": "200px" }}
+            >
+              {task()?.title}
+            </li>
           </ol>
         </nav>
+        <div class="page-header-actions">
+          <Show when={saveStatus()}>
+            <span
+              class={`small ${saveStatus() === "error" ? "text-danger" : "text-muted"}`}
+            >
+              <Show
+                when={saveStatus() === "saved"}
+                fallback={
+                  <Show
+                    when={saveStatus() === "error"}
+                    fallback={
+                      <>
+                        <i class="fas fa-circle-notch fa-spin me-1" />
+                        Saving…
+                      </>
+                    }
+                  >
+                    <i class="fas fa-triangle-exclamation me-1" />
+                    Save failed
+                  </Show>
+                }
+              >
+                <i class="fas fa-check text-success me-1" />
+                Saved
+              </Show>
+            </span>
+          </Show>
+          <button
+            class="btn btn-outline-danger btn-sm btn-icon"
+            title="Delete task"
+            onClick={deleteThisTask}
+          >
+            <i class="fas fa-trash" />
+          </button>
+        </div>
+      </div>
 
-        {message() && <div class="alert alert-info py-2">{message()}</div>}
+      {/* Content - vertical scroll, no tabs */}
+      <div class="page-content">
+        {/* Title */}
+        <div class="task-field">
+          <label for="task-title-input">Title</label>
+          <input
+            id="task-title-input"
+            class="task-title-input"
+            value={editTitle()}
+            onInput={(e) => handleTitleChange(e.currentTarget.value)}
+            placeholder="Task title…"
+          />
+        </div>
 
-        {/* Title area */}
-        <Show
-          when={!editing()}
-          fallback={
-            <div class="mb-3">
-              <input
-                class="form-control form-control-lg mb-2"
-                value={editTitle()}
-                onInput={(e) => setEditTitle(e.currentTarget.value)}
-              />
-              <label class="form-label small">Due by</label>
-              <input
-                type="date"
-                class="form-control mb-2"
-                value={editDueBy()}
-                onInput={(e) => setEditDueBy(e.currentTarget.value)}
-              />
-              <label class="form-label small">Description</label>
-              <EditorJSField
-                value={editDescription()}
-                onChange={(c) => setEditDescription(c)}
-              />
-              <div class="d-flex gap-2 mt-2">
-                <button class="btn btn-primary" onClick={saveEdits}>
-                  Save
-                </button>
-                <button
-                  class="btn btn-outline-secondary"
-                  onClick={() => setEditing(false)}
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          }
-        >
-          <div class="d-flex align-items-start gap-3 mb-3 flex-wrap">
-            <div class="flex-grow-1">
-              <h1
-                class={`h3 mb-1 ${task()?.completed ? "text-muted text-decoration-line-through" : ""}`}
+        {/* Status + Due date row */}
+        <div class="row g-3 mb-4">
+          <div class="col-auto">
+            <div class="task-field">
+              <label>Status</label>
+              <select
+                class="form-select form-select-sm"
+                value={effectiveStatus(task()!)}
+                onChange={(e) =>
+                  handleStatusChange(e.currentTarget.value as TaskStatus)
+                }
+                style={{ width: "auto" }}
               >
-                {task()?.title}
-              </h1>
-              {task()?.dueBy && (
-                <div class="small text-muted">Due {task()?.dueBy}</div>
-              )}
-            </div>
-            <div class="d-flex gap-2">
-              <button
-                class="btn btn-outline-primary btn-sm"
-                onClick={() => setEditing(true)}
-              >
-                ✏ Edit
-              </button>
-              <button
-                class="btn btn-outline-danger btn-sm"
-                onClick={deleteThisTask}
-              >
-                🗑 Delete
-              </button>
+                <For each={KANBAN_COLUMNS}>
+                  {(col) => <option value={col.status}>{col.label}</option>}
+                </For>
+              </select>
             </div>
           </div>
-        </Show>
+          <div class="col-auto">
+            <div class="task-field">
+              <label>Due date</label>
+              <input
+                type="date"
+                class="form-control form-control-sm"
+                value={editDueBy()}
+                onChange={(e) => handleDueByChange(e.currentTarget.value)}
+                style={{ width: "auto" }}
+              />
+            </div>
+          </div>
+          <Show when={project()?.connectionMode !== "local"}>
+            <div class="col-auto">
+              <div class="task-field">
+                <label>Sync</label>
+                <span class={`sync-dot ${task()?.syncStatus}`}>
+                  {task()?.syncStatus}
+                </span>
+              </div>
+            </div>
+          </Show>
+        </div>
 
         {/* Labels */}
-        <div class="mb-3">
-          <label class="form-label small fw-semibold">Labels</label>
+        <div class="task-field mb-4">
+          <label>
+            <i class="fas fa-tags me-1" />
+            Labels
+          </label>
           <LabelAssigner
             projectId={projectId()}
             targetId={taskId()}
             targetType="task"
-            onChanged={() => setMessage("Labels updated.")}
+            onChanged={refresh}
           />
         </div>
 
-        {/* Tabs */}
-        <ul class="nav nav-tabs mb-3">
-          {(["detail", "subtasks", "attachments"] as const).map((tab) => (
-            <li class="nav-item">
-              <button
-                class={`nav-link ${activeTab() === tab ? "active" : ""}`}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-                {tab === "subtasks" && subtasks().length > 0
-                  ? ` (${subtasks().length})`
-                  : ""}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <hr class="section-divider" />
 
-        {/* Detail */}
-        <Show when={activeTab() === "detail"}>
-          <Show
-            when={task()?.description?.blocks?.length}
-            fallback={<p class="text-muted">No description.</p>}
-          >
-            <EditorJSField value={task()?.description} readOnly />
-          </Show>
-          <div class="mt-2">
-            <span
-              class={`badge ${task()?.syncStatus === "synced" ? "text-bg-success" : "text-bg-warning"}`}
-            >
-              {task()?.syncStatus}
-            </span>
-          </div>
-        </Show>
+        {/* Description */}
+        <div class="task-field mb-4">
+          <label>
+            <i class="fas fa-align-left me-1" />
+            Description
+          </label>
+          <EditorJSField
+            value={editDescription()}
+            onChange={handleDescriptionChange}
+          />
+        </div>
+
+        <hr class="section-divider" />
 
         {/* Subtasks */}
-        <Show when={activeTab() === "subtasks"}>
-          <form class="input-group mb-3" onSubmit={addSubtask}>
-            <input
-              class="form-control"
-              placeholder="New subtask…"
-              value={newSubtaskTitle()}
-              onInput={(e) => setNewSubtaskTitle(e.currentTarget.value)}
-            />
-            <button
-              class="btn btn-primary"
-              type="submit"
-              disabled={!newSubtaskTitle().trim()}
-            >
-              Add
-            </button>
-          </form>
+        <TaskSubtaskList
+          projectId={projectId()}
+          subtasks={subtasks()}
+          newSubtaskTitle={newSubtaskTitle()}
+          onNewSubtaskInput={setNewSubtaskTitle}
+          onAddSubtask={addSubtask}
+          onToggle={toggleSubtask}
+          onDelete={removeSubtask}
+        />
 
-          <Show when={subtasks().length === 0}>
-            <p class="text-muted">No subtasks yet.</p>
-          </Show>
-
-          <ul class="list-group list-group-flush">
-            <For each={subtasks()}>
-              {(sub) => (
-                <li class="list-group-item px-0">
-                  <div class="d-flex align-items-center gap-2">
-                    <input
-                      type="checkbox"
-                      class="form-check-input"
-                      checked={sub.completed}
-                      onChange={() => toggleSubtask(sub)}
-                    />
-                    <A
-                      href={`/projects/${projectId()}/tasks/${sub.id}`}
-                      class={`flex-grow-1 text-decoration-none ${sub.completed ? "text-muted text-decoration-line-through" : ""}`}
-                    >
-                      {sub.title}
-                    </A>
-                    <button
-                      type="button"
-                      class="btn btn-outline-danger btn-sm"
-                      onClick={() => removeSubtask(sub)}
-                    >
-                      🗑
-                    </button>
-                  </div>
-                </li>
-              )}
-            </For>
-          </ul>
-        </Show>
+        <hr class="section-divider" />
 
         {/* Attachments */}
-        <Show when={activeTab() === "attachments"}>
+        <div class="mb-4">
+          <h2 class="h6 mb-3">
+            <i class="fas fa-paperclip me-2 text-muted" />
+            Attachments
+          </h2>
           <AttachmentHub
             projectId={projectId()}
             taskId={taskId()}
             uploadTaskId={taskId()}
           />
-        </Show>
+        </div>
       </div>
     </div>
   );
