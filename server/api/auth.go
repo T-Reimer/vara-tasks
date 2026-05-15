@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -49,6 +50,8 @@ type deviceEntry struct {
 	TokenCreatedAt time.Time `json:"tokenCreatedAt"`
 	LastSeen       time.Time `json:"lastSeen"`
 }
+
+var forwardedHostPattern = regexp.MustCompile(`^(?:[A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(?::[0-9]{1,5})?$`)
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
@@ -152,7 +155,7 @@ func resolveServerURL(r *http.Request, configured string) string {
 	host := r.Host
 	if trustProxyHeaders {
 		forwardedHost := firstForwardedHeaderValue(r.Header.Get("X-Forwarded-Host"))
-		if forwardedHost != "" {
+		if forwardedHostPattern.MatchString(forwardedHost) {
 			host = forwardedHost
 		}
 	}

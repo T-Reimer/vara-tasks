@@ -162,7 +162,7 @@ async function pushPending(): Promise<void> {
           applyServerMtime(item, result.mtime);
         } else if (result.conflict) {
           markEntitySyncStatus(item, "error");
-          incrementRetry(item.id, "Server conflict");
+          successful.push(item.id);
         } else {
           markEntitySyncStatus(item, "error");
           incrementRetry(item.id, result.error);

@@ -88,6 +88,7 @@ export async function ingestFile(
     syncStatus: "pending",
   };
 
+  // Store blob first so metadata is never committed for a missing blob.
   storeBlob(projectId, meta.id, base64);
 
   try {
