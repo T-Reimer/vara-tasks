@@ -12,7 +12,7 @@ import (
 
 func main() {
 	count := flag.Int("count", 1, "number of codes to generate")
-	username := flag.String("username", "trevor", "username to bind generated codes to")
+	username := flag.String("username", "admin", "username to bind generated codes to")
 	ttl := flag.Duration("ttl", 5*time.Minute, "code validity window")
 	dataDir := flag.String("data-dir", "./data", "server data directory")
 	flag.Parse()

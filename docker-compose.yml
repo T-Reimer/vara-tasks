@@ -9,6 +9,7 @@ services:
       STATIC_DIR: /app/dist
     ports:
       - "8080:8080"
+    user: "${UID:-1000}:${GID:-1000}"
     volumes:
       - ./server/data:/app/data
       - ./dist:/app/dist:ro

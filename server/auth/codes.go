@@ -47,10 +47,11 @@ func (s *CodeStore) GenerateMany(count int, username string, ttl time.Duration) 
 	if err != nil {
 		return nil, err
 	}
+	entries = pruneStale(entries, time.Now())
 
 	created := make([]CodeEntry, 0, count)
 	for i := 0; i < count; i++ {
-		code, err := generateCode(10)
+		code, err := generateCode(20)
 		if err != nil {
 			return nil, err
 		}
@@ -90,11 +91,12 @@ func (s *CodeStore) Validate(code string, now time.Time) (string, error) {
 			return "", errors.New("code expired")
 		}
 
+		username := entries[i].Username
 		entries[i].Used = true
-		if err := s.save(entries); err != nil {
+		if err := s.save(pruneStale(entries, now)); err != nil {
 			return "", err
 		}
-		return entries[i].Username, nil
+		return username, nil
 	}
 
 	return "", errors.New("code not found")
@@ -138,8 +140,19 @@ func (s *CodeStore) save(entries []CodeEntry) error {
 	return os.Rename(tmp, s.path)
 }
 
+func pruneStale(entries []CodeEntry, now time.Time) []CodeEntry {
+	active := make([]CodeEntry, 0, len(entries))
+	for _, e := range entries {
+		if !e.Used && !now.After(e.ExpiresAt) {
+			active = append(active, e)
+		}
+	}
+	return active
+}
+
 func generateCode(length int) (string, error) {
-	const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+	// Exclude easily confused characters: 0, O, I, l, etc.
+	const alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 	code := make([]byte, length)
 	max := big.NewInt(int64(len(alphabet)))
 	for i := range code {
