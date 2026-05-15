@@ -7,19 +7,36 @@ set -e
 USERNAME="admin"
 TTL="5m"
 DATA_DIR="./server/data"
+BIN_PATH="./server/gen-codes-bin"
+
+cleanup() {
+  rm -f "$BIN_PATH"
+}
+trap cleanup EXIT
+
+require_value() {
+  if [[ -z "${2:-}" || "$2" == -* ]]; then
+    echo "Missing value for $1"
+    echo "Use -h or --help for usage information"
+    exit 1
+  fi
+}
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
     -u|--username)
+      require_value "$1" "${2:-}"
       USERNAME="$2"
       shift 2
       ;;
     --ttl)
+      require_value "$1" "${2:-}"
       TTL="$2"
       shift 2
       ;;
     --data-dir)
+      require_value "$1" "${2:-}"
       DATA_DIR="$2"
       shift 2
       ;;
@@ -48,18 +65,16 @@ done
 
 # Build the gen-codes binary
 echo "Building gen-codes tool..."
-cd server
-go build -o gen-codes-bin ./cmd/gen-codes
-cd ..
+(
+  cd server
+  go build -o gen-codes-bin ./cmd/gen-codes
+)
 
 # Run the generator
 echo "Generating login code for user '$USERNAME'..."
 echo ""
-./server/gen-codes-bin \
+"$BIN_PATH" \
   -count=1 \
   -username="$USERNAME" \
   -ttl="$TTL" \
   -data-dir="$DATA_DIR"
-
-# Clean up
-rm ./server/gen-codes-bin

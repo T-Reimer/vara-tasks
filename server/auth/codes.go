@@ -80,26 +80,41 @@ func (s *CodeStore) Validate(code string, now time.Time) (string, error) {
 		return "", err
 	}
 
+	var (
+		username      string
+		validationErr error
+		found         bool
+	)
+
 	for i := range entries {
 		if entries[i].Code != code {
 			continue
 		}
+		found = true
 		if entries[i].Used {
-			return "", errors.New("code already used")
+			validationErr = errors.New("code already used")
+			break
 		}
 		if now.After(entries[i].ExpiresAt) {
-			return "", errors.New("code expired")
+			validationErr = errors.New("code expired")
+			break
 		}
 
-		username := entries[i].Username
+		username = entries[i].Username
 		entries[i].Used = true
-		if err := s.save(pruneStale(entries, now)); err != nil {
-			return "", err
-		}
-		return username, nil
+		break
 	}
 
-	return "", errors.New("code not found")
+	if err := s.save(pruneStale(entries, now)); err != nil {
+		return "", err
+	}
+	if !found {
+		return "", errors.New("code not found")
+	}
+	if validationErr != nil {
+		return "", validationErr
+	}
+	return username, nil
 }
 
 func (s *CodeStore) ensureFile() error {
