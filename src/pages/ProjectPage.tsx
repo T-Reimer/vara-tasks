@@ -28,6 +28,7 @@ import PromptModal from "../components/PromptModal";
 type ViewMode = "list" | "kanban";
 
 const VIEW_PREF_KEY = "vara.view-mode";
+const VIEW_MODES: ViewMode[] = ["list", "kanban"];
 
 const ProjectPage: Component = () => {
   const params = useParams();
@@ -38,9 +39,14 @@ const ProjectPage: Component = () => {
   const [tasks, setTasks] = createSignal<TaskRecord[]>([]);
   const [searchQuery, setSearchQuery] = createSignal("");
   const [searchVisible, setSearchVisible] = createSignal(false);
-  const [viewMode, setViewMode] = createSignal<ViewMode>(
-    (localStorage.getItem(VIEW_PREF_KEY) as ViewMode) ?? "list",
-  );
+  const getInitialViewMode = (): ViewMode => {
+    if (typeof window === "undefined") return "list";
+    const stored = window.localStorage.getItem(VIEW_PREF_KEY);
+    return stored && VIEW_MODES.includes(stored as ViewMode)
+      ? (stored as ViewMode)
+      : "list";
+  };
+  const [viewMode, setViewMode] = createSignal<ViewMode>(getInitialViewMode());
   const [newTaskTitle, setNewTaskTitle] = createSignal("");
   const [newTaskStatus, setNewTaskStatus] = createSignal<TaskStatus>("todo");
   const [labelFilter, setLabelFilter] = createSignal<
@@ -74,7 +80,9 @@ const ProjectPage: Component = () => {
 
   const setView = (v: ViewMode) => {
     setViewMode(v);
-    localStorage.setItem(VIEW_PREF_KEY, v);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(VIEW_PREF_KEY, v);
+    }
   };
 
   const addTask = (e: SubmitEvent) => {
@@ -362,6 +370,8 @@ const ProjectPage: Component = () => {
           <Show when={labelFilter().length > 0}>
             <button
               class="btn btn-sm btn-outline-danger"
+              aria-label="Clear all filters"
+              title="Clear all filters"
               onClick={() => setLabelFilter([])}
             >
               <i class="fas fa-filter-circle-xmark" />

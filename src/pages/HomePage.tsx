@@ -319,9 +319,12 @@ const HomePage: Component = () => {
             <div class="d-flex flex-column gap-2">
               <For each={localProjects()}>
                 {(project) => (
-                  <A href={`/projects/${project.id}`} class="project-card">
+                  <div class="project-card">
                     <div class="d-flex align-items-start gap-2">
-                      <div class="flex-grow-1 min-w-0">
+                      <A
+                        href={`/projects/${project.id}`}
+                        class="flex-grow-1 min-w-0 text-reset text-decoration-none"
+                      >
                         <div class="project-card-title">{project.title}</div>
                         <div class="project-card-meta d-flex align-items-center gap-2 flex-wrap">
                           <span class="mode-badge local">
@@ -335,17 +338,17 @@ const HomePage: Component = () => {
                             </span>
                           </Show>
                         </div>
-                      </div>
+                      </A>
                       <button
                         type="button"
                         class="btn btn-outline-danger btn-sm btn-icon flex-shrink-0"
                         title="Delete project"
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeProject(project.id); }}
+                        onClick={() => removeProject(project.id)}
                       >
                         <i class="fas fa-trash" />
                       </button>
                     </div>
-                  </A>
+                  </div>
                 )}
               </For>
             </div>
@@ -364,9 +367,12 @@ const HomePage: Component = () => {
             <div class="d-flex flex-column gap-2">
               <For each={serverProjects()}>
                 {(project) => (
-                  <A href={`/projects/${project.id}`} class="project-card">
+                  <div class="project-card">
                     <div class="d-flex align-items-start gap-2">
-                      <div class="flex-grow-1 min-w-0">
+                      <A
+                        href={`/projects/${project.id}`}
+                        class="flex-grow-1 min-w-0 text-reset text-decoration-none"
+                      >
                         <div class="project-card-title">{project.title}</div>
                         <div class="project-card-meta d-flex align-items-center gap-2 flex-wrap">
                           <span class="mode-badge server">
@@ -383,17 +389,17 @@ const HomePage: Component = () => {
                             </span>
                           </Show>
                         </div>
-                      </div>
+                      </A>
                       <button
                         type="button"
                         class="btn btn-outline-danger btn-sm btn-icon flex-shrink-0"
                         title="Delete project"
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); removeProject(project.id); }}
+                        onClick={() => removeProject(project.id)}
                       >
                         <i class="fas fa-trash" />
                       </button>
                     </div>
-                  </A>
+                  </div>
                 )}
               </For>
             </div>

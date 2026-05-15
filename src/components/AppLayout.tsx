@@ -77,7 +77,12 @@ const AppLayout: Component<AppLayoutProps> = (props) => {
         <span class="topbar-title">Vara Tasks</span>
         <div class="ms-auto d-flex align-items-center gap-2">
           <span class={`badge ${syncBadge().cls}`}>{syncBadge().label}</span>
-          <A href="/settings" class="btn btn-sm btn-outline-secondary btn-icon">
+          <A
+            href="/settings"
+            class="btn btn-sm btn-outline-secondary btn-icon"
+            aria-label="Open settings"
+            title="Settings"
+          >
             <i class="fas fa-gear" />
           </A>
         </div>

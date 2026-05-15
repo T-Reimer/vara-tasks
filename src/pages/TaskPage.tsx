@@ -39,12 +39,16 @@ const TaskPage: Component = () => {
     EditorContent | undefined
   >(task()?.description);
   const [newSubtaskTitle, setNewSubtaskTitle] = createSignal("");
-  const [saveStatus, setSaveStatus] = createSignal<"saved" | "saving" | "">("");
+  const [saveStatus, setSaveStatus] = createSignal<
+    "saved" | "saving" | "error" | ""
+  >("");
 
   let autoSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  let clearSaveStatusTimer: ReturnType<typeof setTimeout> | null = null;
 
   onCleanup(() => {
     if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    if (clearSaveStatusTimer) clearTimeout(clearSaveStatusTimer);
   });
 
   const refresh = () => {
@@ -71,9 +75,12 @@ const TaskPage: Component = () => {
         });
         scheduleSyncDebounced();
         refresh();
+        setSaveStatus("saved");
+        if (clearSaveStatusTimer) clearTimeout(clearSaveStatusTimer);
+        clearSaveStatusTimer = setTimeout(() => setSaveStatus(""), 1500);
+      } else {
+        setSaveStatus("error");
       }
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus(""), 1500);
     }, AUTO_SAVE_DELAY);
   };
 
@@ -207,14 +214,24 @@ const TaskPage: Component = () => {
         </nav>
         <div class="page-header-actions">
           <Show when={saveStatus()}>
-            <span class="small text-muted">
+            <span
+              class={`small ${saveStatus() === "error" ? "text-danger" : "text-muted"}`}
+            >
               <Show
                 when={saveStatus() === "saved"}
                 fallback={
-                  <>
-                    <i class="fas fa-circle-notch fa-spin me-1" />
-                    Saving…
-                  </>
+                  <Show
+                    when={saveStatus() === "error"}
+                    fallback={
+                      <>
+                        <i class="fas fa-circle-notch fa-spin me-1" />
+                        Saving…
+                      </>
+                    }
+                  >
+                    <i class="fas fa-triangle-exclamation me-1" />
+                    Save failed
+                  </Show>
                 }
               >
                 <i class="fas fa-check text-success me-1" />
@@ -236,7 +253,9 @@ const TaskPage: Component = () => {
       <div class="page-content">
         {/* Title */}
         <div class="task-field">
+          <label for="task-title-input">Title</label>
           <input
+            id="task-title-input"
             class="task-title-input"
             value={editTitle()}
             onInput={(e) => handleTitleChange(e.currentTarget.value)}
