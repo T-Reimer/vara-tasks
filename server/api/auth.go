@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"vara-tasks/server/middleware"
@@ -30,7 +31,9 @@ type loginResponse struct {
 }
 
 type qrcodeResponse struct {
-	Code      string    `json:"code"`
+	ServerURL string    `json:"serverUrl"`
+	Token     string    `json:"token"`
+	UserID    string    `json:"userId"`
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
@@ -107,16 +110,46 @@ func (h *AuthHandler) QRCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry, err := h.deps.Codes.GenerateOne(claims.Username, 5*time.Minute)
+	// clientID follows Go acronym conventions (uppercase ID).
+	// The JSON field is serialized as "clientId" (camelCase) for JS clients.
+	clientID, err := randomID(8)
 	if err != nil {
-		http.Error(w, "failed to generate code", http.StatusInternalServerError)
+		http.Error(w, "failed to create client ID", http.StatusInternalServerError)
+		return
+	}
+
+	token, expiresAt, err := h.deps.JWT.IssueToken(claims.Username, clientID, 24*time.Hour)
+	if err != nil {
+		http.Error(w, "failed to issue import token", http.StatusInternalServerError)
 		return
 	}
 
 	respondJSON(w, http.StatusOK, qrcodeResponse{
-		Code:      entry.Code,
-		ExpiresAt: entry.ExpiresAt,
+		ServerURL: resolveServerURL(r, h.deps.PublicBaseURL),
+		Token:     token,
+		UserID:    claims.Username,
+		ExpiresAt: expiresAt,
 	})
+}
+
+func resolveServerURL(r *http.Request, configured string) string {
+	if configured != "" {
+		return strings.TrimRight(configured, "/")
+	}
+
+	scheme := "http"
+	if forwarded := r.Header.Get("X-Forwarded-Proto"); forwarded == "http" || forwarded == "https" {
+		scheme = forwarded
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+
+	host := r.Host
+	if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+		host = forwardedHost
+	}
+
+	return scheme + "://" + host
 }
 
 func upsertDevice(dataDir, username string, device deviceEntry) error {

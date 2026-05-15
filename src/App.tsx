@@ -1,11 +1,20 @@
+import { Route, Router } from "@solidjs/router";
 import type { Component } from "solid-js";
+import HomePage from "./pages/HomePage";
+import ProjectPage from "./pages/ProjectPage";
+import TaskPage from "./pages/TaskPage";
+import SettingsPage from "./pages/SettingsPage";
+import GlobalLabelsPage from "./pages/GlobalLabelsPage";
 
 const App: Component = () => {
   return (
-    <div class="container py-5">
-      <h1>Vara Tasks</h1>
-      <p class="lead text-muted">Your tasks, organized simply. Edit</p>
-    </div>
+    <Router>
+      <Route path="/" component={HomePage} />
+      <Route path="/projects/:id" component={ProjectPage} />
+      <Route path="/projects/:projectId/tasks/:taskId" component={TaskPage} />
+      <Route path="/settings" component={SettingsPage} />
+      <Route path="/labels" component={GlobalLabelsPage} />
+    </Router>
   );
 };
 

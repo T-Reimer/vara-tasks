@@ -3,16 +3,18 @@ package config
 import "os"
 
 type Config struct {
-	Port    string
-	DataDir string
-	StaticDir string
+	Port          string
+	DataDir       string
+	StaticDir     string
+	PublicBaseURL string
 }
 
 func Load() Config {
 	return Config{
-		Port:      getOrDefault("PORT", "8080"),
-		DataDir:   getOrDefault("DATA_DIR", "./data"),
-		StaticDir: getOrDefault("STATIC_DIR", "../dist"),
+		Port:          getOrDefault("PORT", "8080"),
+		DataDir:       getOrDefault("DATA_DIR", "./data"),
+		StaticDir:     getOrDefault("STATIC_DIR", "../dist"),
+		PublicBaseURL: os.Getenv("PUBLIC_BASE_URL"),
 	}
 }
 

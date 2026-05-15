@@ -8,9 +8,10 @@ import (
 )
 
 type Dependencies struct {
-	JWT     *auth.Manager
-	Codes   *auth.CodeStore
-	DataDir string
+	JWT           *auth.Manager
+	Codes         *auth.CodeStore
+	DataDir       string
+	PublicBaseURL string
 }
 
 func RegisterRoutes(mux *http.ServeMux, deps Dependencies) {
