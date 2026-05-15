@@ -356,6 +356,12 @@ go run main.go           # Start server on port 8080
 go build                 # Compile binary
 go run ./cmd/gen-codes   # Generate auth codes
 
+# Generating Login Codes (from project root)
+./generate-codes.sh                    # Generate 1 code for admin (default 5min expiry)
+./generate-codes.sh -u alice          # Generate 1 code for alice
+./generate-codes.sh -u bob --ttl 10m  # Generate 1 code for bob, valid for 10 minutes
+./generate-codes.sh --help            # Show all options
+
 # Backend (Docker)
 docker compose up --build
 
