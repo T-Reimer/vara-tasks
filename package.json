@@ -23,7 +23,13 @@
   "dependencies": {
     "@capacitor/android": "^8.3.4",
     "@capacitor/core": "^8.3.4",
+    "@editorjs/code": "^2.9.4",
+    "@editorjs/editorjs": "^2.31.6",
+    "@editorjs/header": "^2.8.9",
+    "@editorjs/list": "^2.0.9",
+    "@editorjs/quote": "^2.7.6",
     "@popperjs/core": "^2.11.8",
+    "@solidjs/router": "^0.16.1",
     "bootstrap": "^5.3.8",
     "solid-js": "^1.9.12"
   }

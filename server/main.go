@@ -32,9 +32,10 @@ func main() {
 	}
 
 	deps := api.Dependencies{
-		JWT:     jwtManager,
-		Codes:   codeStore,
-		DataDir: cfg.DataDir,
+		JWT:           jwtManager,
+		Codes:         codeStore,
+		DataDir:       cfg.DataDir,
+		PublicBaseURL: cfg.PublicBaseURL,
 	}
 
 	mux := http.NewServeMux()

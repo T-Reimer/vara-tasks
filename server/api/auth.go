@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"vara-tasks/server/middleware"
@@ -30,7 +32,9 @@ type loginResponse struct {
 }
 
 type qrcodeResponse struct {
-	Code      string    `json:"code"`
+	ServerURL string    `json:"serverUrl"`
+	Token     string    `json:"token"`
+	UserID    string    `json:"userId"`
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
@@ -46,6 +50,8 @@ type deviceEntry struct {
 	TokenCreatedAt time.Time `json:"tokenCreatedAt"`
 	LastSeen       time.Time `json:"lastSeen"`
 }
+
+var forwardedHostPattern = regexp.MustCompile(`^(?:[A-Za-z0-9.-]+|\[[A-Fa-f0-9:]+\])(?::[0-9]{1,5})?$`)
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
@@ -107,16 +113,77 @@ func (h *AuthHandler) QRCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry, err := h.deps.Codes.GenerateOne(claims.Username, 5*time.Minute)
+	// clientID follows Go acronym conventions (uppercase ID).
+	// The JSON field is serialized as "clientId" (camelCase) for JS clients.
+	clientID, err := randomID(8)
 	if err != nil {
-		http.Error(w, "failed to generate code", http.StatusInternalServerError)
+		http.Error(w, "failed to create client ID", http.StatusInternalServerError)
+		return
+	}
+
+	token, expiresAt, err := h.deps.JWT.IssueToken(claims.Username, clientID, 24*time.Hour)
+	if err != nil {
+		http.Error(w, "failed to issue import token", http.StatusInternalServerError)
 		return
 	}
 
 	respondJSON(w, http.StatusOK, qrcodeResponse{
-		Code:      entry.Code,
-		ExpiresAt: entry.ExpiresAt,
+		ServerURL: resolveServerURL(r, h.deps.PublicBaseURL),
+		Token:     token,
+		UserID:    claims.Username,
+		ExpiresAt: expiresAt,
 	})
+}
+
+func resolveServerURL(r *http.Request, configured string) string {
+	if configured != "" {
+		return strings.TrimRight(configured, "/")
+	}
+
+	scheme := "http"
+	trustProxyHeaders := strings.EqualFold(os.Getenv("TRUST_PROXY_HEADERS"), "true")
+	if trustProxyHeaders {
+		forwardedProto := firstForwardedHeaderValue(r.Header.Get("X-Forwarded-Proto"))
+		if forwardedProto == "http" || forwardedProto == "https" {
+			scheme = forwardedProto
+		}
+	}
+	if scheme == "http" && r.TLS != nil {
+		scheme = "https"
+	}
+
+	host := r.Host
+	if trustProxyHeaders {
+		forwardedHost := firstForwardedHeaderValue(r.Header.Get("X-Forwarded-Host"))
+		if isValidForwardedHost(forwardedHost) {
+			host = forwardedHost
+		}
+	}
+
+	return scheme + "://" + host
+}
+
+func firstForwardedHeaderValue(value string) string {
+	if value == "" {
+		return ""
+	}
+	first := strings.Split(value, ",")[0]
+	trimmed := strings.TrimSpace(first)
+	if trimmed == "" {
+		return ""
+	}
+	// Forwarded host/proto headers should be a single token.
+	if strings.ContainsAny(trimmed, " \t") {
+		return ""
+	}
+	return trimmed
+}
+
+func isValidForwardedHost(value string) bool {
+	if !forwardedHostPattern.MatchString(value) {
+		return false
+	}
+	return !strings.Contains(value, "..")
 }
 
 func upsertDevice(dataDir, username string, device deviceEntry) error {
