@@ -1,8 +1,13 @@
-import type { EditorContent, TaskRecord } from "../models/types";
+import type { EditorContent, TaskRecord, TaskStatus } from "../models/types";
 import { loadJSON, saveJSON } from "./storage";
 
 function storageKey(projectId: string): string {
   return `vara.tasks.${projectId}`;
+}
+
+/** Resolve effective status for tasks that predate the status field. */
+export function effectiveStatus(task: TaskRecord): TaskStatus {
+  return task.status ?? (task.completed ? "done" : "todo");
 }
 
 export function listTasks(projectId: string): TaskRecord[] {
@@ -30,15 +35,18 @@ export function createTask(input: {
   title: string;
   description?: EditorContent;
   dueBy?: string;
+  status?: TaskStatus;
 }): TaskRecord {
   const now = new Date().toISOString();
+  const status = input.status ?? "todo";
   const task: TaskRecord = {
     id: crypto.randomUUID(),
     projectId: input.projectId,
     parentTaskId: input.parentTaskId,
     title: input.title.trim(),
     description: input.description,
-    completed: false,
+    completed: status === "done",
+    status,
     dueBy: input.dueBy,
     createdAt: now,
     updatedAt: now,
@@ -57,7 +65,7 @@ export function updateTask(
   changes: Partial<
     Pick<
       TaskRecord,
-      "title" | "description" | "completed" | "dueBy" | "syncStatus"
+      "title" | "description" | "completed" | "dueBy" | "syncStatus" | "status"
     >
   >,
 ): TaskRecord | null {
@@ -65,9 +73,19 @@ export function updateTask(
   const index = tasks.findIndex((t) => t.id === taskId);
   if (index === -1) return null;
 
+  // Keep status and completed in sync
+  let resolvedChanges = { ...changes };
+  if (changes.status !== undefined && changes.completed === undefined) {
+    resolvedChanges.completed = changes.status === "done";
+  } else if (changes.completed !== undefined && changes.status === undefined) {
+    resolvedChanges.status = changes.completed ? "done" : "todo";
+  }
+
+  const existing = tasks[index]!;
   const updated: TaskRecord = {
-    ...tasks[index],
-    ...changes,
+    ...existing,
+    status: effectiveStatus(existing),
+    ...resolvedChanges,
     updatedAt: new Date().toISOString(),
   };
   tasks[index] = updated;

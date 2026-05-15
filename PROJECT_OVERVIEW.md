@@ -5,6 +5,7 @@
 Vara Tasks is a cross-platform (Web + Android) project and task management application with offline-first capabilities. The application enables users to organize work hierarchically through projects containing tasks, with rich formatting, attachments, and flexible labeling systems.
 
 **Key Simplifications**:
+
 - File-based storage (no database)
 - All users are trusted admins (no permissions/quotas)
 - Client-generated UUIDs for easy syncing
@@ -110,9 +111,12 @@ For Local-only projects, use:
   "createdAt": "2026-05-14T10:00:00Z",
   "dueBy": "2026-05-20T23:59:59Z",
   "updatedAt": "2026-05-14T10:00:00Z",
-  "completed": false
+  "completed": false,
+  "status": "todo"
 }
 ```
+
+> `status` values: `"todo"` | `"in_progress"` | `"review"` | `"done"`. Legacy tasks without this field default to `"todo"` (or `"done"` if `completed: true`).
 
 ### 1.4 Attachment Metadata (attachments/{id}.meta.json)
 
@@ -215,24 +219,24 @@ For Local-only projects, use:
 
 ## 2. Feature Requirements Matrix
 
-| Feature                                 | Category       | Priority | Web | Android | Notes                            |
-| --------------------------------------- | -------------- | -------- | --- | ------- | -------------------------------- |
-| Create/Read/Update/Delete Project       | Core           | P0       | ✓   | ✓       | Permanent delete (hard delete)   |
-| Create/Read/Update/Delete Task          | Core           | P0       | ✓   | ✓       | Includes nested tasks; hard delete |
-| Rich Text Formatting (EditorJS)         | Content        | P0       | ✓   | ✓       | Markdown fallback                |
-| Project Attachments Hub                 | Files          | P1       | ✓   | ✓       | Centralized display              |
-| Task Attachment Association             | Files          | P1       | ✓   | ✓       | Multi-task attach                |
-| Global Labels                           | Organization   | P1       | ✓   | ✓       | Reusable across projects         |
-| Project-Specific Labels                 | Organization   | P1       | ✓   | ✓       | Custom per-project               |
-| Label Type Support (text/date/dropdown) | Organization   | P1       | ✓   | ✓       | Flexible metadata                |
-| Offline-First Sync                      | Infrastructure | P0       | ✓   | ✓       | Core requirement                 |
+| Feature                                 | Category       | Priority | Web | Android | Notes                                  |
+| --------------------------------------- | -------------- | -------- | --- | ------- | -------------------------------------- |
+| Create/Read/Update/Delete Project       | Core           | P0       | ✓   | ✓       | Permanent delete (hard delete)         |
+| Create/Read/Update/Delete Task          | Core           | P0       | ✓   | ✓       | Includes nested tasks; hard delete     |
+| Rich Text Formatting (EditorJS)         | Content        | P0       | ✓   | ✓       | Markdown fallback                      |
+| Project Attachments Hub                 | Files          | P1       | ✓   | ✓       | Centralized display                    |
+| Task Attachment Association             | Files          | P1       | ✓   | ✓       | Multi-task attach                      |
+| Global Labels                           | Organization   | P1       | ✓   | ✓       | Reusable across projects               |
+| Project-Specific Labels                 | Organization   | P1       | ✓   | ✓       | Custom per-project                     |
+| Label Type Support (text/date/dropdown) | Organization   | P1       | ✓   | ✓       | Flexible metadata                      |
+| Offline-First Sync                      | Infrastructure | P0       | ✓   | ✓       | Core requirement                       |
 | Project Connection Mode Selection       | Infrastructure | P0       | ✓   | ✓       | Choose Local-only or configured server |
-| Modified-Time Conflict Resolution       | Infrastructure | P1       | ✓   | ✓       | Use file mtime                   |
-| Local-First Storage                     | Infrastructure | P0       | ✓   | ✓       | IndexedDB (web), SQLite (mobile) |
-| Search & Filter                         | UX             | P2       | ✓   | ✓       | In-project search only           |
-| Project Templates                       | Productivity   | P2       | ✓   | ✓       | Future phase                     |
-| Task Dependencies                       | Productivity   | P3       | ✓   | ✓       | Future phase                     |
-| Team Collaboration                      | Social         | P3       | ✓   | ✓       | Future phase                     |
+| Modified-Time Conflict Resolution       | Infrastructure | P1       | ✓   | ✓       | Use file mtime                         |
+| Local-First Storage                     | Infrastructure | P0       | ✓   | ✓       | IndexedDB (web), SQLite (mobile)       |
+| Search & Filter                         | UX             | P2       | ✓   | ✓       | In-project search only                 |
+| Project Templates                       | Productivity   | P2       | ✓   | ✓       | Future phase                           |
+| Task Dependencies                       | Productivity   | P3       | ✓   | ✓       | Future phase                           |
+| Team Collaboration                      | Social         | P3       | ✓   | ✓       | Future phase                           |
 
 ---
 
@@ -244,11 +248,15 @@ For Local-only projects, use:
 
 - **Framework**: Solid.js (already configured)
 - **Build**: Vite (already configured)
-- **Local DB**: IndexedDB + WatermelonDB or PouchDB
-- **Offline Runtime**: Service Worker (asset caching + background sync trigger)
-- **UI**: Bootstrap 5 (already installed) + custom components
+- **Local DB**: localStorage (JSON-serialized, service-layer abstraction)
+- **Offline Runtime**: Built-in online/offline event listeners + sync queue
+- **UI**: Bootstrap 5 + custom SCSS + Font Awesome 6 (CDN)
+- **Icons**: Font Awesome 6 Free (via CDN, no npm dependency)
 - **Formatting**: EditorJS with plugins
 - **HTTP Client**: Fetch API + AbortController
+- **Navigation**: Hamburger sidebar (collapsible on mobile), responsive layout
+- **Views**: List view and Kanban board (4 columns: To-Do, In Progress, Review, Done)
+- **Task editing**: All fields immediately editable with debounced auto-save (no edit mode)
 
 #### Mobile (Android)
 
@@ -474,16 +482,16 @@ func processTransaction(tx Transaction) {
       result.error = "lock_timeout"
       continue
     }
-    
+
     serverMtime := getFileMtime(operation.path)
-    
+
     if operation.mtime < serverMtime {
       // Server is newer, client loses
       result.conflict = true
       result.mtime = serverMtime
       continue
     }
-    
+
     // Apply operation
     writeFile(operation.path, operation.content)
     result.mtime = getCurrentTime()
@@ -506,11 +514,11 @@ func processTransaction(tx Transaction) {
 1. Server admin generates auth codes:
   $ cd /server
   $ go run ./cmd/gen-codes --count 5
-   
+
    Output:
    CODE: ABC123DEF456
    EXPIRES: 2026-05-14T10:05:00Z
-   
+
    CODE: XYZ789QWE123
    EXPIRES: 2026-05-14T10:05:00Z
 
@@ -520,7 +528,7 @@ func processTransaction(tx Transaction) {
 
 3. User enters code in web/mobile app:
    POST /api/auth/login { code: "ABC123DEF456" }
-   
+
    Response: {
      token: "eyJhbGciOiJIUzI1NiIs...",
      expiresIn: 86400,
@@ -733,44 +741,49 @@ When coming online:
 ## 10. Development Phases
 
 ### Phase 1: Foundation (Weeks 1-2)
+
 - [ ] Set up Capacitor + Solid.js
 - [ ] Implement IndexedDB/SQLite schema
 - [ ] Create basic project/task CRUD UI
 - [ ] EditorJS integration
 - [ ] Offline change queue
-**Deliverable**: Functional offline app (no backend)
+      **Deliverable**: Functional offline app (no backend)
 
 ### Phase 2: Backend & Sync (Week 3)
+
 - [ ] Create Go backend project
 - [ ] Implement transaction API
 - [ ] File locking mechanism
 - [ ] JWT auth with code generation
 - [ ] Basic sync engine
-**Deliverable**: Server-client sync working
+      **Deliverable**: Server-client sync working
 
 ### Phase 3: Attachments & Labels (Week 4)
+
 - [ ] File upload/download endpoints
 - [ ] Attachment index management
 - [ ] Global label system
 - [ ] Project label system
 - [ ] Label assignment UI
-**Deliverable**: Full attachment + label system
+      **Deliverable**: Full attachment + label system
 
 ### Phase 4: Advanced Features (Week 5)
+
 - [ ] Nested tasks refinement
 - [ ] Search & filtering
 - [ ] QR code auth UI
 - [ ] Multi-device sync
 - [ ] Mobile testing
-**Deliverable**: Production-ready beta
+      **Deliverable**: Production-ready beta
 
 ### Phase 5: Polish & Deployment (Week 6+)
+
 - [ ] Performance optimization
 - [ ] Error handling & recovery
 - [ ] Comprehensive testing
 - [ ] Documentation
 - [ ] Deployment setup
-**Deliverable**: Ready for production
+      **Deliverable**: Ready for production
 
 ---
 
@@ -813,6 +826,7 @@ When coming online:
 ## 12. Considerations & Risks
 
 ### Simplified Approach Benefits
+
 - ✓ No database to manage/backup
 - ✓ Simple file-based replication (just copy directory)
 - ✓ Easy to understand data structure
@@ -821,12 +835,14 @@ When coming online:
 - ✓ Simple conflict resolution (last-write-wins)
 
 ### Potential Challenges
+
 - ⚠ File I/O performance at scale (millions of files)
 - ⚠ Need robust file locking across platforms
 - ⚠ Backups more manual (but simple - just copy data/)
 - ⚠ Search requires in-memory index
 
 ### Mitigation Strategies
+
 1. Monitor file system limits; archive old projects
 2. Test on target hardware early
 3. Document backup procedure; automate if needed

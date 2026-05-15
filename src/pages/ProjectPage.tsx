@@ -1,14 +1,17 @@
-import { createSignal, For, Show, type Component } from "solid-js";
+import { createMemo, createSignal, For, Show, type Component } from "solid-js";
 import { A, useNavigate, useParams } from "@solidjs/router";
-import type { Label, LabelAssignment, TaskRecord } from "../models/types";
-import { getProject, updateProject, deleteProject } from "../services/projects";
+import type {
+  TaskRecord,
+  TaskStatus,
+} from "../models/types";
+import { getProject, deleteProject } from "../services/projects";
 import {
   createTask,
+  deleteTask,
   listRootTasks,
-  listChildTasks,
   searchTasks,
   toggleTaskComplete,
-  deleteTask,
+  updateTask,
 } from "../services/tasks";
 import {
   getAssignmentsForTarget,
@@ -17,13 +20,14 @@ import {
 } from "../services/labels";
 import { enqueueTaskOp } from "../services/sync-queue";
 import { scheduleSyncDebounced } from "../services/sync-engine";
-import SyncStatus from "../components/SyncStatus";
-import OfflineIndicator from "../components/OfflineIndicator";
-import SearchBar from "../components/SearchBar";
-import LabelManager from "../components/LabelManager";
-import LabelAssigner from "../components/LabelAssigner";
-import LabelBadge from "../components/LabelBadge";
 import AttachmentHub from "../components/AttachmentHub";
+import KanbanBoard from "../components/KanbanBoard";
+import ProjectTaskList from "../components/ProjectTaskList";
+import PromptModal from "../components/PromptModal";
+
+type ViewMode = "list" | "kanban";
+
+const VIEW_PREF_KEY = "vara.view-mode";
 
 const ProjectPage: Component = () => {
   const params = useParams();
@@ -33,14 +37,16 @@ const ProjectPage: Component = () => {
   const [project, setProject] = createSignal(getProject(projectId()));
   const [tasks, setTasks] = createSignal<TaskRecord[]>([]);
   const [searchQuery, setSearchQuery] = createSignal("");
-  const [activeTab, setActiveTab] = createSignal<
-    "tasks" | "attachments" | "labels"
-  >("tasks");
+  const [searchVisible, setSearchVisible] = createSignal(false);
+  const [viewMode, setViewMode] = createSignal<ViewMode>(
+    (localStorage.getItem(VIEW_PREF_KEY) as ViewMode) ?? "list",
+  );
   const [newTaskTitle, setNewTaskTitle] = createSignal("");
+  const [newTaskStatus, setNewTaskStatus] = createSignal<TaskStatus>("todo");
   const [labelFilter, setLabelFilter] = createSignal<
     { labelId: string; value: string }[]
   >([]);
-  const [message, setMessage] = createSignal("");
+  const [promptStatus, setPromptStatus] = createSignal<TaskStatus | null>(null);
 
   const labels = () => listAllLabels(projectId());
 
@@ -55,7 +61,7 @@ const ProjectPage: Component = () => {
 
   refresh();
 
-  const filteredTasks = () => {
+  const filteredTasks = createMemo(() => {
     const filters = labelFilter();
     if (filters.length === 0) return tasks();
     const ids = filterTasksByLabel(
@@ -64,11 +70,11 @@ const ProjectPage: Component = () => {
       filters,
     );
     return tasks().filter((t) => ids.includes(t.id));
-  };
+  });
 
-  const handleSearch = (q: string) => {
-    setSearchQuery(q);
-    refresh();
+  const setView = (v: ViewMode) => {
+    setViewMode(v);
+    localStorage.setItem(VIEW_PREF_KEY, v);
   };
 
   const addTask = (e: SubmitEvent) => {
@@ -78,6 +84,7 @@ const ProjectPage: Component = () => {
       projectId: projectId(),
       parentTaskId: null,
       title: newTaskTitle().trim(),
+      status: newTaskStatus(),
     });
     enqueueTaskOp({
       operationType: "create",
@@ -90,8 +97,48 @@ const ProjectPage: Component = () => {
     refresh();
   };
 
+  const addTaskWithStatus = (status: TaskStatus) => {
+    setPromptStatus(status);
+  };
+
+  const handlePromptConfirm = (title: string) => {
+    const status = promptStatus()!;
+    setPromptStatus(null);
+    const task = createTask({
+      projectId: projectId(),
+      parentTaskId: null,
+      title,
+      status,
+    });
+    enqueueTaskOp({
+      operationType: "create",
+      projectId: projectId(),
+      taskId: task.id,
+      content: task,
+    });
+    scheduleSyncDebounced();
+    refresh();
+  };
+
   const toggleComplete = (task: TaskRecord) => {
     const updated = toggleTaskComplete(projectId(), task.id);
+    if (updated) {
+      enqueueTaskOp({
+        operationType: "update",
+        projectId: projectId(),
+        taskId: task.id,
+        content: updated,
+      });
+      scheduleSyncDebounced();
+    }
+    refresh();
+  };
+
+  const changeStatus = (task: TaskRecord, status: TaskStatus) => {
+    const updated = updateTask(projectId(), task.id, {
+      status,
+      syncStatus: "pending",
+    });
     if (updated) {
       enqueueTaskOp({
         operationType: "update",
@@ -124,10 +171,11 @@ const ProjectPage: Component = () => {
 
   if (!project()) {
     return (
-      <div class="container py-4">
+      <div class="page-content">
         <div class="alert alert-danger">Project not found.</div>
-        <A href="/" class="btn btn-outline-secondary">
-          ← Back
+        <A href="/" class="btn btn-outline-secondary btn-sm">
+          <i class="fas fa-arrow-left me-1" />
+          Back
         </A>
       </div>
     );
@@ -135,231 +183,256 @@ const ProjectPage: Component = () => {
 
   return (
     <div>
-      <OfflineIndicator />
-      <div class="container py-4">
-        {/* Header */}
-        <div class="d-flex align-items-start gap-3 mb-4 flex-wrap">
-          <A href="/" class="btn btn-outline-secondary btn-sm mt-1">
-            ← Back
-          </A>
-          <div class="flex-grow-1">
-            <h1 class="h3 mb-0">{project()?.title}</h1>
-            <div class="small text-muted">
-              {project()?.connectionMode === "local"
-                ? "Local-only"
-                : "Server-backed"}
-              {project()?.dueBy && ` · Due ${project()?.dueBy}`}
-            </div>
-          </div>
-          <div class="d-flex gap-2 align-items-center">
-            <SyncStatus />
-            <button
-              class="btn btn-outline-danger btn-sm"
-              onClick={deleteThisProject}
+      <PromptModal
+        show={promptStatus() !== null}
+        heading="Add task"
+        placeholder="Task title…"
+        onConfirm={handlePromptConfirm}
+        onCancel={() => setPromptStatus(null)}
+      />
+      {/* Page Header */}
+      <div class="page-header">
+        <div class="flex-grow-1 min-w-0">
+          <h1 class="page-title">{project()?.title}</h1>
+          <div class="d-flex align-items-center gap-2 mt-1">
+            <span
+              class={`mode-badge ${project()?.connectionMode === "local" ? "local" : "server"}`}
             >
-              🗑 Delete
-            </button>
+              <i
+                class={`fas ${project()?.connectionMode === "local" ? "fa-hard-drive" : "fa-server"} me-1`}
+              />
+              {project()?.connectionMode === "local" ? "Local" : "Server"}
+            </span>
+            <Show when={project()?.dueBy}>
+              <span class="small text-muted">
+                <i class="fas fa-calendar me-1" />
+                {project()?.dueBy}
+              </span>
+            </Show>
+            <Show when={project()?.connectionMode !== "local"}>
+              <span class={`sync-dot ${project()?.syncStatus}`}>
+                {project()?.syncStatus}
+              </span>
+            </Show>
           </div>
         </div>
+        <div class="page-header-actions">
+          <button
+            class="btn btn-outline-danger btn-sm btn-icon"
+            title="Delete project"
+            onClick={deleteThisProject}
+          >
+            <i class="fas fa-trash" />
+          </button>
+          <A
+            href={`/projects/${projectId()}/settings`}
+            class="btn btn-outline-secondary btn-sm btn-icon"
+            title="Project settings"
+          >
+            <i class="fas fa-sliders" />
+          </A>
+        </div>
+      </div>
 
-        {message() && <div class="alert alert-info py-2">{message()}</div>}
+      {/* Toolbar */}
+      <div class="page-toolbar">
+        {/* View toggle */}
+        <button
+          class={`view-toggle-btn ${viewMode() === "list" ? "active" : ""}`}
+          title="List view"
+          onClick={() => setView("list")}
+        >
+          <i class="fas fa-list" />
+        </button>
+        <button
+          class={`view-toggle-btn ${viewMode() === "kanban" ? "active" : ""}`}
+          title="Kanban view"
+          onClick={() => setView("kanban")}
+        >
+          <i class="fas fa-columns" />
+        </button>
 
-        {/* Tabs */}
-        <ul class="nav nav-tabs mb-3">
-          {(["tasks", "attachments", "labels"] as const).map((tab) => (
-            <li class="nav-item">
+        <div
+          class="vr mx-1"
+          style={{ height: "24px", "align-self": "center" }}
+        />
+
+        {/* Search */}
+        <Show
+          when={searchVisible()}
+          fallback={
+            <button
+              class="btn btn-sm btn-outline-secondary btn-icon"
+              title="Search tasks"
+              onClick={() => setSearchVisible(true)}
+            >
+              <i class="fas fa-magnifying-glass" />
+            </button>
+          }
+        >
+          <div class="search-inline">
+            <i class="fas fa-magnifying-glass" />
+            <input
+              type="text"
+              placeholder="Search tasks…"
+              value={searchQuery()}
+              onInput={(e) => {
+                setSearchQuery(e.currentTarget.value);
+                refresh();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchQuery("");
+                  setSearchVisible(false);
+                  refresh();
+                }
+              }}
+              autofocus
+            />
+            <Show when={searchQuery()}>
               <button
-                class={`nav-link ${activeTab() === tab ? "active" : ""}`}
-                onClick={() => setActiveTab(tab)}
+                class="btn btn-link btn-sm p-0 ms-1"
+                onClick={() => {
+                  setSearchQuery("");
+                  setSearchVisible(false);
+                  refresh();
+                }}
               >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                <i class="fas fa-xmark text-muted" />
               </button>
-            </li>
-          ))}
-        </ul>
-
-        {/* Tasks tab */}
-        <Show when={activeTab() === "tasks"}>
-          <div class="mb-3">
-            <SearchBar placeholder="Search tasks…" onSearch={handleSearch} />
+            </Show>
           </div>
+        </Show>
 
-          {/* Label filter */}
-          <Show when={labels().length > 0}>
-            <div class="mb-3 d-flex flex-wrap gap-2 align-items-center">
-              <span class="small text-muted">Filter:</span>
-              <For each={labels()}>
-                {(label) => {
-                  const isActive = () =>
-                    labelFilter().some((f) => f.labelId === label.id);
-                  const opts = label.options ?? ["true"];
-                  return (
-                    <div class="dropdown">
-                      <button
-                        class={`btn btn-sm ${isActive() ? "btn-primary" : "btn-outline-secondary"}`}
-                        type="button"
-                        data-bs-toggle="dropdown"
-                      >
-                        {label.title}
-                      </button>
-                      <ul class="dropdown-menu">
-                        <For each={opts}>
-                          {(opt) => (
-                            <li>
-                              <button
-                                class="dropdown-item"
-                                onClick={() => {
-                                  setLabelFilter((f) => {
-                                    const without = f.filter(
-                                      (x) => x.labelId !== label.id,
-                                    );
-                                    return [
-                                      ...without,
-                                      { labelId: label.id, value: opt },
-                                    ];
-                                  });
-                                }}
-                              >
-                                {opt}
-                              </button>
-                            </li>
-                          )}
-                        </For>
-                        <li>
-                          <hr class="dropdown-divider" />
-                        </li>
+        {/* Label filter */}
+        <Show when={labels().length > 0}>
+          <For each={labels()}>
+            {(label) => {
+              const isActive = () =>
+                labelFilter().some((f) => f.labelId === label.id);
+              const opts = label.options ?? ["true"];
+              return (
+                <div class="dropdown">
+                  <button
+                    class={`btn btn-sm ${isActive() ? "btn-primary" : "btn-outline-secondary"}`}
+                    type="button"
+                    data-bs-toggle="dropdown"
+                  >
+                    <i class="fas fa-filter me-1" />
+                    {label.title}
+                  </button>
+                  <ul class="dropdown-menu">
+                    <For each={opts}>
+                      {(opt) => (
                         <li>
                           <button
-                            class="dropdown-item"
+                            class="dropdown-item small"
                             onClick={() =>
-                              setLabelFilter((f) =>
-                                f.filter((x) => x.labelId !== label.id),
-                              )
+                              setLabelFilter((f) => [
+                                ...f.filter((x) => x.labelId !== label.id),
+                                { labelId: label.id, value: opt },
+                              ])
                             }
                           >
-                            Clear
+                            {opt}
                           </button>
                         </li>
-                      </ul>
-                    </div>
-                  );
-                }}
-              </For>
-              <Show when={labelFilter().length > 0}>
-                <button
-                  class="btn btn-sm btn-outline-danger"
-                  onClick={() => setLabelFilter([])}
-                >
-                  Clear all filters
-                </button>
-              </Show>
-            </div>
+                      )}
+                    </For>
+                    <li>
+                      <hr class="dropdown-divider" />
+                    </li>
+                    <li>
+                      <button
+                        class="dropdown-item small text-muted"
+                        onClick={() =>
+                          setLabelFilter((f) =>
+                            f.filter((x) => x.labelId !== label.id),
+                          )
+                        }
+                      >
+                        Clear
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              );
+            }}
+          </For>
+          <Show when={labelFilter().length > 0}>
+            <button
+              class="btn btn-sm btn-outline-danger"
+              onClick={() => setLabelFilter([])}
+            >
+              <i class="fas fa-filter-circle-xmark" />
+            </button>
           </Show>
+        </Show>
 
-          {/* Add task */}
-          <form class="input-group mb-3" onSubmit={addTask}>
+        <div class="ms-auto" />
+
+        {/* Add task (in list view only) */}
+        <Show when={viewMode() === "list"}>
+          <form class="d-flex gap-1" onSubmit={addTask}>
             <input
-              class="form-control"
+              class="form-control form-control-sm"
               placeholder="New task…"
+              style={{ width: "160px" }}
               value={newTaskTitle()}
               onInput={(e) => setNewTaskTitle(e.currentTarget.value)}
             />
             <button
-              class="btn btn-primary"
+              class="btn btn-primary btn-sm"
               type="submit"
               disabled={!newTaskTitle().trim()}
             >
-              Add Task
+              <i class="fas fa-plus" />
             </button>
           </form>
-
-          <Show when={filteredTasks().length === 0}>
-            <p class="text-muted">No tasks yet.</p>
-          </Show>
-
-          <ul class="list-group list-group-flush">
-            <For each={filteredTasks()}>
-              {(task) => {
-                const assignments = () =>
-                  getAssignmentsForTarget(projectId(), task.id, "task");
-                const childCount = () =>
-                  listChildTasks(projectId(), task.id).length;
-
-                return (
-                  <li class="list-group-item px-0">
-                    <div class="d-flex align-items-start gap-2">
-                      <input
-                        type="checkbox"
-                        class="form-check-input mt-1"
-                        checked={task.completed}
-                        onChange={() => toggleComplete(task)}
-                      />
-                      <div class="flex-grow-1">
-                        <A
-                          href={`/projects/${projectId()}/tasks/${task.id}`}
-                          class={`fw-semibold text-decoration-none ${task.completed ? "text-muted text-decoration-line-through" : ""}`}
-                        >
-                          {task.title}
-                        </A>
-                        <div class="small text-muted">
-                          {task.dueBy && `Due ${task.dueBy} · `}
-                          {childCount() > 0 && `${childCount()} subtask(s) · `}
-                          <span
-                            class={`badge ${task.syncStatus === "synced" ? "text-bg-success" : "text-bg-warning"}`}
-                            style={{ "font-size": "0.65rem" }}
-                          >
-                            {task.syncStatus}
-                          </span>
-                        </div>
-                        <div class="d-flex flex-wrap gap-1 mt-1">
-                          <For each={assignments()}>
-                            {(a) => {
-                              const label = labels().find(
-                                (l) => l.id === a.labelId,
-                              );
-                              return label ? (
-                                <LabelBadge label={label} assignment={a} />
-                              ) : null;
-                            }}
-                          </For>
-                        </div>
-                      </div>
-                      <div class="d-flex gap-1">
-                        <A
-                          href={`/projects/${projectId()}/tasks/${task.id}`}
-                          class="btn btn-outline-secondary btn-sm"
-                        >
-                          Open
-                        </A>
-                        <button
-                          type="button"
-                          class="btn btn-outline-danger btn-sm"
-                          onClick={() => removeTask(task)}
-                        >
-                          🗑
-                        </button>
-                      </div>
-                    </div>
-                  </li>
-                );
-              }}
-            </For>
-          </ul>
         </Show>
+      </div>
 
-        {/* Attachments tab */}
-        <Show when={activeTab() === "attachments"}>
-          <AttachmentHub projectId={projectId()} />
-        </Show>
-
-        {/* Labels tab */}
-        <Show when={activeTab() === "labels"}>
-          <h2 class="h5 mb-3">Project Labels</h2>
-          <LabelManager
+      {/* Content */}
+      <div class="page-content">
+        {/* Kanban View */}
+        <Show when={viewMode() === "kanban"}>
+          <KanbanBoard
+            tasks={filteredTasks()}
             projectId={projectId()}
-            onChanged={() => setMessage("Labels updated.")}
+            labels={labels()}
+            getAssignments={(taskId) =>
+              getAssignmentsForTarget(projectId(), taskId, "task")
+            }
+            onStatusChange={changeStatus}
+            onDelete={removeTask}
+            onAddTask={addTaskWithStatus}
           />
         </Show>
+
+        {/* List View */}
+        <Show when={viewMode() === "list"}>
+          <ProjectTaskList
+            tasks={filteredTasks()}
+            projectId={projectId()}
+            labels={labels()}
+            getAssignments={(taskId) =>
+              getAssignmentsForTarget(projectId(), taskId, "task")
+            }
+            onToggleComplete={toggleComplete}
+            onDelete={removeTask}
+          />
+        </Show>
+
+        <hr class="section-divider" />
+
+        {/* Attachments Section */}
+        <div class="mb-4">
+          <h2 class="h6 mb-3">
+            <i class="fas fa-paperclip me-2 text-muted" />
+            Attachments
+          </h2>
+          <AttachmentHub projectId={projectId()} />
+        </div>
       </div>
     </div>
   );

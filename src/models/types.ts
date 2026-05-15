@@ -1,5 +1,7 @@
 export type ConnectionMode = "local" | "server";
 
+export type TaskStatus = "todo" | "in_progress" | "review" | "done";
+
 export type LabelType = "text" | "date" | "dropdown";
 
 export type SyncStatus = "synced" | "pending" | "error";
@@ -54,6 +56,7 @@ export interface TaskRecord {
   title: string;
   description?: EditorContent;
   completed: boolean;
+  status: TaskStatus;
   dueBy?: string;
   createdAt: string;
   updatedAt: string;

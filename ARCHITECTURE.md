@@ -32,9 +32,9 @@
     │ createdAt                │  │ uploadedAt         │  │ createdAt           │
     │ dueBy                    │  │ version            │  │ updatedAt           │
     │ completed (BOOLEAN)      │  │ syncStatus         │  │ deletedAt           │
-    │ version                  │  └────────────────────┘  └─────────────────────┘
-    │ syncStatus               │           │
-    └────────────────────────────          │ N:M
+    │ status (VARCHAR)         │  └────────────────────┘  └─────────────────────┘
+    │   todo|in_progress       │           │
+    │   review|done            │ N:M
                                            │
                           ┌────────────────▼────────────────┐
                           │   TASK_ATTACHMENTS (Junction)   │
