@@ -17,5 +17,5 @@ ENV DATA_DIR=/app/data
 ENV STATIC_DIR=/app/dist
 VOLUME ["/app/data"]
 
-USER app
+USER nonroot
 ENTRYPOINT ["/app/vara-server"]
