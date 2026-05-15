@@ -90,23 +90,34 @@ export async function ingestFile(
 
   // Store blob first so metadata is never committed for a missing blob.
   storeBlob(projectId, meta.id, base64);
+  let metadataSaved = false;
 
   try {
     const metas = listAttachments(projectId);
     metas.push(meta);
     saveJSON(metaKey(projectId), metas);
+    metadataSaved = true;
 
     if (taskId) {
       linkAttachmentToTask(projectId, meta.id, taskId);
     }
   } catch (error) {
     try {
-      removeBlob(projectId, meta.id);
-      const cleaned = listAttachments(projectId).filter((a) => a.id !== meta.id);
-      saveJSON(metaKey(projectId), cleaned);
+      if (!metadataSaved) {
+        removeBlob(projectId, meta.id);
+        const cleaned = listAttachments(projectId).filter((a) => a.id !== meta.id);
+        saveJSON(metaKey(projectId), cleaned);
+      }
       const index = loadJSON<AttachmentIndex>(indexKey(projectId), {});
       if (index[meta.id]) {
-        delete index[meta.id];
+        if (metadataSaved) {
+          index[meta.id] = (index[meta.id] ?? []).filter((id) => id !== taskId);
+          if (index[meta.id].length === 0) {
+            delete index[meta.id];
+          }
+        } else {
+          delete index[meta.id];
+        }
         saveJSON(indexKey(projectId), index);
       }
     } catch {

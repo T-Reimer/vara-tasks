@@ -86,13 +86,14 @@ export function scheduleSyncDebounced(): void {
 
 export async function runSync(): Promise<void> {
   if (isSyncing) return;
+  const isOnline = navigator.onLine;
 
   isSyncing = true;
   emit({ isSyncing: true, lastError: null });
 
   try {
-    await pushPending();
-    if (navigator.onLine) {
+    await pushPending({ allowServerPush: isOnline });
+    if (isOnline) {
       await pullRemoteChanges();
       const now = Date.now();
       setLastSyncTs(now);
@@ -109,7 +110,7 @@ export async function runSync(): Promise<void> {
 
 // ─── Push ──────────────────────────────────────────────────────────────────
 
-async function pushPending(): Promise<void> {
+async function pushPending(options?: { allowServerPush?: boolean }): Promise<void> {
   const batch = nextBatch(50);
   if (batch.length === 0) return;
 
@@ -126,6 +127,9 @@ async function pushPending(): Promise<void> {
         successful.push(item.id);
         applyServerMtime(item, item.mtime);
       }
+      continue;
+    }
+    if (options?.allowServerPush === false) {
       continue;
     }
 
